@@ -1,0 +1,250 @@
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asistente de Educación en Diabetes</title>
+    <style>
+        /* Estilos CSS para la interfaz del chat */
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f4f8;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            color: #333;
+        }
+
+        #chat-container {
+            background-color: #ffffff;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            max-width: 700px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow: hidden;
+            /* Para que el chat no se desborde */
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 1.8em;
+        }
+
+        #chat-box {
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 15px;
+            height: 400px;
+            /* Altura fija para el historial del chat */
+            overflow-y: auto;
+            /* Scroll si el contenido es largo */
+            background-color: #f9f9f9;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            padding: 10px 15px;
+            border-radius: 12px;
+            max-width: 80%;
+            word-wrap: break-word;
+            /* Para que el texto largo se ajuste */
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .user-message {
+            align-self: flex-end;
+            background-color: #dcf8c6;
+            /* Verde claro para el usuario */
+            color: #333;
+        }
+
+        .assistant-message {
+            align-self: flex-start;
+            background-color: #e6e6e6;
+            /* Gris claro para el asistente */
+            color: #333;
+        }
+
+        .loading-message {
+            align-self: flex-start;
+            background-color: #f0f8ff;
+            /* Azul muy claro para carga */
+            color: #555;
+            font-style: italic;
+        }
+
+        #input-area {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        #user-input {
+            flex-grow: 1;
+            padding: 12px 15px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1em;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        #user-input:focus {
+            border-color: #3498db;
+        }
+
+        #send-button {
+            padding: 12px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        #send-button:hover {
+            background-color: #2980b9;
+            transform: translateY(-1px);
+        }
+
+        #send-button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 600px) {
+            #chat-container {
+                padding: 15px;
+                gap: 15px;
+            }
+
+            #chat-box {
+                height: 300px;
+            }
+
+            #input-area {
+                flex-direction: column;
+            }
+
+            #send-button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="chat-container">
+        <h1>Asistente para Educadores en Diabetes</h1>
+        <div id="chat-box">
+            <div class="assistant-message">¡Hola! Soy tu asistente para planificar actividades educativas. Pregúntame
+                sobre métodos didácticos, autoeficacia, carga cognitiva o cualquier tema del diplomado.</div>
+        </div>
+        <div id="input-area">
+            <input type="text" id="user-input" placeholder="Escribe tu pregunta aquí...">
+            <button id="send-button">Enviar</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuración del Frontend ---
+        // ¡IMPORTANTE! Reemplaza esta URL con la dirección de tu servidor Flask.
+        // Si lo ejecutas localmente, será http://127.0.0.1:5000/ask
+        // Si lo despliegas en otro lugar, será la URL de tu API.
+        const API_ENDPOINT = 'http://192.168.0.121:5000/ask'; // <--- ¡AJUSTA ESTA URL SI ES NECESARIO!
+
+        const chatBox = document.getElementById('chat-box');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+
+        // Función para añadir un mensaje al chat
+        function addMessage(sender, text, is_loading = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            if (sender === 'user') {
+                messageDiv.classList.add('user-message');
+            } else {
+                messageDiv.classList.add('assistant-message');
+            }
+            if (is_loading) {
+                messageDiv.classList.add('loading-message');
+                messageDiv.id = 'loading-indicator'; // Añadir ID para fácil eliminación
+            }
+            messageDiv.textContent = text;
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight; // Desplazarse al final
+        }
+
+        // Función para eliminar el indicador de carga
+        function removeLoadingIndicator() {
+            const loadingIndicator = document.getElementById('loading-indicator');
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+        }
+
+        // Función para enviar la pregunta al backend
+        async function sendMessage() {
+            const question = userInput.value.trim();
+            if (question === '') return; // No enviar preguntas vacías
+
+            addMessage('user', question); // Mostrar la pregunta del usuario
+            userInput.value = ''; // Limpiar el input
+            sendButton.disabled = true; // Deshabilitar botón mientras se espera respuesta
+            addMessage('assistant', 'Escribiendo...', true); // Mostrar indicador de carga
+
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ question: question }),
+                });
+
+                const data = await response.json();
+                removeLoadingIndicator(); // Eliminar indicador de carga
+                addMessage('assistant', data.response); // Mostrar la respuesta del asistente
+
+            } catch (error) {
+                console.error('Error al comunicarse con el backend:', error);
+                removeLoadingIndicator();
+                addMessage('assistant', 'Lo siento, hubo un error al conectar con el asistente. Por favor, inténtalo de nuevo más tarde.');
+            } finally {
+                sendButton.disabled = false; // Habilitar botón de nuevo
+                userInput.focus(); // Volver a enfocar el input
+            }
+        }
+
+        // Event Listeners
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Asegurarse de que el input esté enfocado al cargar la página
+        window.onload = () => {
+            userInput.focus();
+        };
+    </script>
+</body>
+
+</html>
