@@ -24,7 +24,7 @@ genai.configure(api_key=API_KEY)
 os.environ["GOOGLE_API_KEY"] = API_KEY # Aunque la pasamos directamente, es buena práctica
 
 # --- 2. Carga y Procesamiento de Documentos (Se ejecuta una vez al iniciar el servidor) ---
-PDF_FOLDER_PATH = "C:/Users/PC-1500/Documents/Diplomado/IA diabetes/Asistente/Archivos PDF" # <--- ¡VERIFICA Y AJUSTA TU RUTA!
+PDF_FOLDER_PATH = "Archivos PDF" # <--- ¡VERIFICA Y AJUSTA TU RUTA!
 PERSIST_DIRECTORY = "./chroma_db_diabetes"
 
 # Inicializar text_splitter una sola vez
