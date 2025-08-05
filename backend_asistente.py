@@ -16,12 +16,19 @@ app = Flask(__name__)
 CORS(app) # Habilitar CORS para permitir peticiones desde el frontend web
 
 # --- 1. Configuración de la API de Google Gemini ---
-# IMPORTANTE: Reemplace "YOUR_API_KEY" con su clave API real de Google Gemini.
-API_KEY = "AIzaSyCA5-ZpMMKV4NeHDGgiHMpp5GgHUXUQ7Vo" # <--- ¡REEMPLAZAR CON SU CLAVE API REAL!
+# IMPORTANTE: ¡NO USES LA CLAVE API DIRECTAMENTE EN EL CÓDIGO!
+# Se obtiene de las variables de entorno de Render.
+API_KEY = os.getenv("GOOGLE_API_KEY")
 
+# Verificar si la clave API está disponible
+if not API_KEY:
+    print("ERROR: La variable de entorno GOOGLE_API_KEY no está configurada. El asistente no funcionará.")
+    # En un entorno de producción, podrías considerar salir o lanzar una excepción aquí.
+    # Para este caso, permitiremos que el script continúe para que el error sea capturado
+    # por la inicialización de genai o langchain.
 
 genai.configure(api_key=API_KEY)
-os.environ["GOOGLE_API_KEY"] = API_KEY # Aunque la pasamos directamente, es buena práctica
+os.environ["GOOGLE_API_KEY"] = API_KEY # Asegura que Langchain también la use
 
 # --- 2. Carga y Procesamiento de Documentos (Se ejecuta una vez al iniciar el servidor) ---
 PDF_FOLDER_PATH = "Archivos PDF" # <--- ¡VERIFICA Y AJUSTA TU RUTA!
@@ -131,10 +138,10 @@ llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2, google_a
 qa_chain = None
 if vector_db:
     custom_prompt_template = """
-    Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela y un experto en diseño instruccional para pacientes. Tu propósito es guiar a los educadores en diabetes sobre la mejor manera de lograr que los pacientes adquieran **conocimiento** y **autoeficacia** en el manejo de su condición. Para ello, integrarás y aplicarás los principios de la neurociencia del aprendizaje, la teoría de la carga cognitiva, la teoría de la autoeficacia de Bandura, la escucha activa y las herramientas de las precauciones universales de alfabetización en salud, tal como se definen en tus documentos de referencia. Cuando un educador te pregunte cómo enseñar un aspecto específico de la diabetes (ya sea cognitivo, afectivo o psicomotor) o cómo planificar una actividad instruccional, debes: 
-1. **Sugerir métodos didácticos** adecuados y concretos. 
-2. **Justificar tus sugerencias** explicando cómo estos métodos se alinean con las bases teóricas mencionadas (ej., cómo reducen la carga cognitiva, cómo fomentan la autoeficacia, cómo se adaptan a la alfabetización en salud, o cómo aplican principios de neurociencia). 
-3. **Ofrecer ejemplos prácticos y aplicables** en el contexto de la educación en diabetes. 
+    Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela y un experto en diseño instruccional para pacientes. Tu propósito es guiar a los educadores en diabetes sobre la mejor manera de lograr que los pacientes adquieran **conocimiento** y **autoeficacia** en el manejo de su condición. Para ello, integrarás y aplicarás los principios de la neurociencia del aprendizaje, la teoría de la carga cognitiva, la teoría de la autoeficacia de Bandura, la escucha activa y las herramientas de las precauciones universales de alfabetización en salud, tal como se definen en tus documentos de referencia. Cuando un educador te pregunte cómo enseñar un aspecto específico de la diabetes (ya sea cognitivo, afectivo o psicomotor) o cómo planificar una actividad instruccional, debes:
+1. **Sugerir métodos didácticos** adecuados y concretos.
+2. **Justificar tus sugerencias** explicando cómo estos métodos se alinean con las bases teóricas mencionadas (ej., cómo reducen la carga cognitiva, cómo fomentan la autoeficacia, cómo se adaptan a la alfabetización en salud, o cómo aplican principios de neurociencia).
+3. **Ofrecer ejemplos prácticos y aplicables** en el contexto de la educación en diabetes.
 4. **Enfatizar la diferencia entre 'dar información' y 'educar' terapéuticamente**, promoviendo un enfoque centrado en la capacitación y el empoderamiento del paciente. 5. Puedes utilizar el Ejemplo de actividad para guiarte. Debes basar todas tus respuestas EXCLUSIVAMENTE en el contexto proporcionado por los documentos. Si la información necesaria para responder no se encuentra en el contexto, indica claramente que no puedes responder a esa pregunta. No inventes.
 
     Contexto: {context}
@@ -156,6 +163,14 @@ else:
     print("ADVERTENCIA: La cadena QA no se pudo inicializar porque la base de datos vectorial no está disponible.")
 
 # --- 5. Endpoint de la API Flask ---
+# Ruta raíz para manejar peticiones OPTIONS y GET básicas
+@app.route('/', methods=['GET', 'OPTIONS'])
+def home():
+    if request.method == 'OPTIONS':
+        # Esto es necesario para las peticiones CORS preflight
+        return '', 200
+    return jsonify({"message": "Asistente de Educación en Diabetes en línea. ¡Envía tus preguntas a /ask!"}), 200
+
 @app.route('/ask', methods=['POST'])
 def ask_assistant_api():
     if not qa_chain:
@@ -182,4 +197,6 @@ if __name__ == '__main__':
     print("El servidor estará escuchando en http://127.0.0.1:5000/")
     print("Asegúrese de que su clave API y la ruta de los PDFs sean correctas.")
     # CAMBIO CLAVE: Desactivar el modo debug para evitar problemas de bloqueo de archivos
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    # Render usa Gunicorn, por lo que este bloque no se ejecuta en producción.
+    # El puerto 10000 es el que usa Render, no 5000.
+    app.run(debug=False, host='0.0.0.0', port=os.environ.get('PORT', 5000))
