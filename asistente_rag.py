@@ -27,9 +27,9 @@ os.environ["GOOGLE_API_KEY"] = API_KEY
 
 
 # --- 2. Carga y Procesamiento de Documentos ---
-# Define la ruta a la carpeta donde tienes tus documentos PDF.
-# Asegúrate de que esta ruta sea correcta en tu sistema.
-# import os
+import os # Asegúrate de que esta línea no esté comentada
+from langchain_community.document_loaders import DirectoryLoader # Asegúrate de que esta línea no esté comentada
+from langchain.text_splitter import RecursiveCharacterTextSplitter # Asegúrate de que esta línea no esté comentada
 
 # Obtiene la ruta del directorio del script actual de forma segura
 directorio_base = os.path.dirname(os.path.abspath(__file__))
@@ -37,18 +37,18 @@ directorio_base = os.path.dirname(os.path.abspath(__file__))
 # Combina la ruta base con el nombre de la carpeta de los PDFs
 ruta_a_los_pdfs = os.path.join(directorio_base, "Archivos PDF")
 
-# Aquí va el código para cargar los PDFs
-documents = []
+documents = [] # Inicializa la lista de documentos
 
+# Carga los documentos PDF de la carpeta especificada
+# Asegúrate de que estas líneas NO estén comentadas
 loader = DirectoryLoader(ruta_a_los_pdfs, glob="**/*.pdf")
 documents.extend(loader.load())
 
 # Inicializar text_splitter fuera del bloque if/else para que siempre esté disponible
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200
+    chunk_size=1000,  # Tamaño de cada fragmento
+    chunk_overlap=200 # Superposición entre fragmentos para mantener el contexto
 )
-
 if os.path.exists(PDF_FOLDER_PATH):
     print(f"Cargando documentos desde: {PDF_FOLDER_PATH}")
     for filename in os.listdir(PDF_FOLDER_PATH):
@@ -201,4 +201,5 @@ if __name__ == "__main__":
             print("Asistente: Analizando tu solicitud...")
             answer = ask_assistant(user_question)
             print(f"Asistente: {answer}")
+
 
