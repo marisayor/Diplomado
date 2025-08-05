@@ -6,4 +6,4 @@ langchain
 chromadb
 langchain_google_genai
 langchain_community
-
+flask_cors
