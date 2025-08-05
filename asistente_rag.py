@@ -29,10 +29,22 @@ os.environ["GOOGLE_API_KEY"] = API_KEY
 # --- 2. Carga y Procesamiento de Documentos ---
 # Define la ruta a la carpeta donde tienes tus documentos PDF.
 # Asegúrate de que esta ruta sea correcta en tu sistema.
-# Ejemplo: "documentos_diplomado/" si la carpeta está en el mismo directorio que tu script.
-# Ejemplo: "C:/Users/TuUsuario/Documents/Diplomado/IA diabetes/Asistente/Archivos PDF"
-PDF_FOLDER_PATH = "C:/Users/PC-1500/Documents/Diplomado/IA diabetes/Asistente/Archivos PDF" # <--- ¡MODIFICADA A TU RUTA!
+# import os
 
+# Obtiene la ruta del directorio del script actual de forma segura
+directorio_base = os.path.dirname(os.path.abspath(__file__))
+
+# Combina la ruta base con el nombre de la carpeta de los PDFs
+ruta_a_los_pdfs = os.path.join(directorio_base, "Archivos PDF")
+
+# Ahora, la variable `ruta_a_los_pdfs` contendrá la ruta correcta,
+# tanto en tu PC como en Render.
+
+# Ejemplo de cómo podrías usarla en el resto de tu código:
+# for filename in os.listdir(ruta_a_los_pdfs):
+#     if filename.endswith(".pdf"):
+#         full_path = os.path.join(ruta_a_los_pdfs, filename)
+#         # Tu lógica para procesar el PDF va aquí
 documents = []
 # Inicializar text_splitter fuera del bloque if/else para que siempre esté disponible
 text_splitter = RecursiveCharacterTextSplitter(
