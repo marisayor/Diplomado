@@ -1,6 +1,7 @@
 gunicorn
 Flask
-google-ai-generativelanguage
+google-generativeai
 pypdf
 langchain
 chromadb
+
