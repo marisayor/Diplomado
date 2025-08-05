@@ -37,19 +37,16 @@ directorio_base = os.path.dirname(os.path.abspath(__file__))
 # Combina la ruta base con el nombre de la carpeta de los PDFs
 ruta_a_los_pdfs = os.path.join(directorio_base, "Archivos PDF")
 
-# Ahora, la variable `ruta_a_los_pdfs` contendrá la ruta correcta,
-# tanto en tu PC como en Render.
-
-# Ejemplo de cómo podrías usarla en el resto de tu código:
-# for filename in os.listdir(ruta_a_los_pdfs):
-#     if filename.endswith(".pdf"):
-#         full_path = os.path.join(ruta_a_los_pdfs, filename)
-#         # Tu lógica para procesar el PDF va aquí
+# Aquí va el código para cargar los PDFs
 documents = []
+
+loader = DirectoryLoader(ruta_a_los_pdfs, glob="**/*.pdf")
+documents.extend(loader.load())
+
 # Inicializar text_splitter fuera del bloque if/else para que siempre esté disponible
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,  # Tamaño de cada fragmento
-    chunk_overlap=200 # Superposición entre fragmentos para mantener el contexto
+    chunk_size=1000,
+    chunk_overlap=200
 )
 
 if os.path.exists(PDF_FOLDER_PATH):
@@ -204,3 +201,4 @@ if __name__ == "__main__":
             print("Asistente: Analizando tu solicitud...")
             answer = ask_assistant(user_question)
             print(f"Asistente: {answer}")
+
