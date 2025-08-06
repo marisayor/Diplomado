@@ -172,6 +172,13 @@ def home():
         return '', 200
     return jsonify({"message": "Asistente de Educación en Diabetes en línea. ¡Envía tus preguntas a /ask!"}), 200
 
+# Endpoint de prueba simple
+@app.route('/test', methods=['GET'])
+def test_endpoint():
+    print("DEBUG: Recibida petición en /test") # DEBUG
+    return jsonify({"message": "¡Hola desde el backend! El servidor Flask está funcionando."}), 200
+
+
 @app.route('/ask', methods=['POST'])
 def ask_assistant_api():
     if not qa_chain:
