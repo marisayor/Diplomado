@@ -1,254 +1,194 @@
+<!DOCTYPE html>
 <html lang="es">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Asistente de Educación en Diabetes</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        /* Estilos CSS para la interfaz del chat */
         body {
             font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            background-color: #f0f4f8;
-            margin: 0;
             padding: 20px;
-            box-sizing: border-box;
-            color: #333;
         }
-
-        #chat-container {
+        .chat-container {
             background-color: #ffffff;
-            padding: 25px;
             border-radius: 15px;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-            max-width: 700px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
             width: 100%;
+            max-width: 600px;
             display: flex;
             flex-direction: column;
-            gap: 20px;
             overflow: hidden;
-            /* Para que el chat no se desborde */
         }
-
-        h1 {
-            color: #2c3e50;
+        .chat-header {
+            background-color: #6366f1; /* Indigo 500 */
+            color: white;
+            padding: 20px;
             text-align: center;
-            margin-bottom: 15px;
-            font-size: 1.8em;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-top-left-radius: 15px;
+            border-top-right-radius: 15px;
         }
-
-        #chat-box {
-            border: 1px solid #e0e0e0;
-            border-radius: 10px;
-            padding: 15px;
-            height: 400px;
-            /* Altura fija para el historial del chat */
+        .chat-messages {
+            flex-grow: 1;
+            padding: 20px;
             overflow-y: auto;
-            /* Scroll si el contenido es largo */
-            background-color: #f9f9f9;
+            max-height: 70vh; /* Ajusta la altura máxima para el scroll */
             display: flex;
             flex-direction: column;
             gap: 10px;
         }
-
         .message {
-            padding: 10px 15px;
-            border-radius: 12px;
             max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 15px;
             word-wrap: break-word;
-            /* Para que el texto largo se ajuste */
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
         }
-
         .user-message {
             align-self: flex-end;
-            background-color: #dcf8c6;
-            /* Verde claro para el usuario */
-            color: #333;
+            background-color: #e0e7ff; /* Indigo 100 */
+            color: #3730a3; /* Indigo 700 */
+            border-bottom-right-radius: 5px;
         }
-
         .assistant-message {
             align-self: flex-start;
-            background-color: #e6e6e6;
-            /* Gris claro para el asistente */
-            color: #333;
+            background-color: #d1fae5; /* Green 100 */
+            color: #065f46; /* Green 800 */
+            border-bottom-left-radius: 5px;
         }
-
-        .loading-message {
-            align-self: flex-start;
-            background-color: #f0f8ff;
-            /* Azul muy claro para carga */
-            color: #555;
-            font-style: italic;
-        }
-
-        #input-area {
+        .chat-input-area {
             display: flex;
+            padding: 20px;
+            border-top: 1px solid #e5e7eb;
             gap: 10px;
-            margin-top: 15px;
         }
-
-        #user-input {
+        .chat-input {
             flex-grow: 1;
             padding: 12px 15px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 1em;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            font-size: 1rem;
             outline: none;
-            transition: border-color 0.2s;
         }
-
-        #user-input:focus {
-            border-color: #3498db;
+        .chat-input:focus {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
         }
-
-        #send-button {
-            padding: 12px 20px;
-            background-color: #3498db;
+        .send-button {
+            background-color: #6366f1; /* Indigo 500 */
             color: white;
-            border: none;
-            border-radius: 8px;
+            padding: 12px 20px;
+            border-radius: 10px;
             cursor: pointer;
-            font-size: 1em;
             font-weight: bold;
-            transition: background-color 0.2s, transform 0.1s;
+            transition: background-color 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
-
-        #send-button:hover {
-            background-color: #2980b9;
-            transform: translateY(-1px);
+        .send-button:hover {
+            background-color: #4f46e5; /* Indigo 600 */
         }
-
-        #send-button:disabled {
-            background-color: #cccccc;
+        .send-button:disabled {
+            background-color: #a5b4fc; /* Indigo 300 */
             cursor: not-allowed;
         }
-
-        /* Responsive adjustments */
-        @media (max-width: 600px) {
-            #chat-container {
-                padding: 15px;
-                gap: 15px;
-            }
-
-            #chat-box {
-                height: 300px;
-            }
-
-            #input-area {
-                flex-direction: column;
-            }
-
-            #send-button {
-                width: 100%;
-            }
+        .loading-indicator {
+            text-align: center;
+            padding: 10px;
+            font-style: italic;
+            color: #6b7280; /* Gray 500 */
         }
     </style>
 </head>
-
 <body>
-    <div id="chat-container">
-        <h1>Asistente para Educadores en Diabetes</h1>
-        <div id="chat-box">
-            <div class="assistant-message">¡Hola! Soy tu asistente para planificar actividades educativas. Puedes preguntarme cómo planifiacar actividades educativas sobre los Aspectos clave del automanejo de su condición de personas con diabtes tipo 1.
-                </div>
+    <div class="chat-container">
+        <div class="chat-header">
+            Asistente de Educación en Diabetes
         </div>
-        <div id="input-area">
-            <input type="text" id="user-input" placeholder="Escribe tu pregunta aquí...">
-            <button id="send-button">Enviar</button>
+        <div class="chat-messages" id="chat-messages">
+            <div class="assistant-message message">
+                ¡Hola! Soy tu asistente para planificar actividades educativas. Puedes preguntarme cómo planificar actividades educativas sobre los Aspectos clave del automanejo de su condición de personas con diabetes tipo 1.
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="user-input" class="chat-input" placeholder="Escribe tu pregunta aquí...">
+            <button id="send-button" class="send-button">Enviar</button>
         </div>
     </div>
 
     <script>
-        // --- Configuración del Frontend ---
-        // ¡IMPORTANTE! Reemplaza esta URL con la dirección de tu servidor Flask.
-        // Si lo ejecutas localmente, será http://127.0.0.1:5000/ask
-        // Si lo despliegas en otro lugar, será la URL de tu API.
-        const API_ENDPOINT = 'https://asistente-para-educadores-en-diabetes.onrender.com'; // <--- ¡AJUSTA ESTA URL SI ES NECESARIO!
+        // ¡CAMBIO CLAVE AQUÍ! Añade '/ask' al final de la URL de tu backend
+        const API_ENDPOINT = 'https://asistente-para-educadores-en-diabetes.onrender.com/ask'; 
 
-        const chatBox = document.getElementById('chat-box');
+        const chatMessages = document.getElementById('chat-messages');
         const userInput = document.getElementById('user-input');
         const sendButton = document.getElementById('send-button');
 
-        // Función para añadir un mensaje al chat
-        function addMessage(sender, text, is_loading = false) {
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('message');
-            if (sender === 'user') {
-                messageDiv.classList.add('user-message');
-            } else {
-                messageDiv.classList.add('assistant-message');
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
             }
-            if (is_loading) {
-                messageDiv.classList.add('loading-message');
-                messageDiv.id = 'loading-indicator'; // Añadir ID para fácil eliminación
-            }
-            messageDiv.textContent = text;
-            chatBox.appendChild(messageDiv);
-            chatBox.scrollTop = chatBox.scrollHeight; // Desplazarse al final
-        }
+        });
 
-        // Función para eliminar el indicador de carga
-        function removeLoadingIndicator() {
-            const loadingIndicator = document.getElementById('loading-indicator');
-            if (loadingIndicator) {
-                loadingIndicator.remove();
-            }
-        }
-
-        // Función para enviar la pregunta al backend
         async function sendMessage() {
             const question = userInput.value.trim();
-            if (question === '') return; // No enviar preguntas vacías
+            if (!question) return;
 
-            addMessage('user', question); // Mostrar la pregunta del usuario
-            userInput.value = ''; // Limpiar el input
+            // Mostrar mensaje del usuario
+            appendMessage(question, 'user-message');
+            userInput.value = '';
             sendButton.disabled = true; // Deshabilitar botón mientras se espera respuesta
-            addMessage('assistant', 'Escribiendo...', true); // Mostrar indicador de carga
+
+            // Mostrar indicador de carga
+            const loadingMessage = appendMessage('Escribiendo...', 'assistant-message loading-indicator');
 
             try {
                 const response = await fetch(API_ENDPOINT, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ question: question }),
+                    body: JSON.stringify({ question: question })
                 });
 
+                // Eliminar indicador de carga
+                chatMessages.removeChild(loadingMessage);
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.response || `Error del servidor: ${response.status}`);
+                }
+
                 const data = await response.json();
-                removeLoadingIndicator(); // Eliminar indicador de carga
-                addMessage('assistant', data.response); // Mostrar la respuesta del asistente
+                appendMessage(data.response, 'assistant-message');
 
             } catch (error) {
-                console.error('Error al comunicarse con el backend:', error);
-                removeLoadingIndicator();
-                addMessage('assistant', 'Lo siento, hubo un error al conectar con el asistente. Por favor, inténtalo de nuevo más tarde.');
+                console.error('Error al conectar con el asistente:', error);
+                // Eliminar indicador de carga si hubo un error
+                if (loadingMessage && chatMessages.contains(loadingMessage)) {
+                    chatMessages.removeChild(loadingMessage);
+                }
+                appendMessage('Lo siento, hubo un error al conectar con el asistente. Por favor, inténtalo de nuevo más tarde.', 'assistant-message');
             } finally {
                 sendButton.disabled = false; // Habilitar botón de nuevo
-                userInput.focus(); // Volver a enfocar el input
+                chatMessages.scrollTop = chatMessages.scrollHeight; // Desplazar al final
             }
         }
 
-        // Event Listeners
-        sendButton.addEventListener('click', sendMessage);
-        userInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        });
-
-        // Asegurarse de que el input esté enfocado al cargar la página
-        window.onload = () => {
-            userInput.focus();
-        };
+        function appendMessage(text, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', type);
+            messageDiv.textContent = text;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight; // Desplazar al final
+            return messageDiv; // Devolver el elemento para poder eliminarlo si es un indicador de carga
+        }
     </script>
 </body>
-
 </html>
-
-
-
-
