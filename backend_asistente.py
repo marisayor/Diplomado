@@ -137,6 +137,8 @@ llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2, google_a
 # --- 4. Creación de la Cadena RAG ---
 qa_chain = None
 if vector_db:
+    from langchain.chains import RetrievalQA # Asegúrate de que RetrievalQA esté importado aquí
+    from langchain.prompts import PromptTemplate # Asegúrate de que PromptTemplate esté importado aquí
     custom_prompt_template = """
     Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela y un experto en diseño instruccional para pacientes. Tu propósito es guiar a los educadores en diabetes sobre la mejor manera de lograr que los pacientes adquieran **conocimiento** y **autoeficacia** en el manejo de su condición. Para ello, integrarás y aplicarás los principios de la neurociencia del aprendizaje, la teoría de la carga cognitiva, la teoría de la autoeficacia de Bandura, la escucha activa y las herramientas de las precauciones universales de alfabetización en salud, tal como se definen en tus documentos de referencia. Cuando un educador te pregunte cómo enseñar un aspecto específico de la diabetes (ya sea cognitivo, afectivo o psicomotor) o cómo planificar una actividad instruccional, debes:
 1. **Sugerir métodos didácticos** adecuados y concretos.
