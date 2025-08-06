@@ -205,4 +205,3 @@ if __name__ == '__main__':
     # Render usa Gunicorn, por lo que este bloque no se ejecuta en producción.
     # El puerto 10000 es el que usa Render, no 5000.
     app.run(debug=False, host='0.0.0.0', port=os.environ.get('PORT', 5000))
-
