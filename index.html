@@ -122,7 +122,6 @@
     </div>
 
     <script>
-        // ¡CAMBIO CLAVE AQUÍ! Añade '/ask' al final de la URL de tu backend
         const API_ENDPOINT = 'https://asistente-para-educadores-en-diabetes.onrender.com/ask'; 
 
         const chatMessages = document.getElementById('chat-messages');
@@ -183,7 +182,9 @@
 
         function appendMessage(text, type) {
             const messageDiv = document.createElement('div');
-            messageDiv.classList.add('message', type);
+            messageDiv.classList.add('message'); // Añade 'message' primero
+            // Divide la cadena 'type' por espacios y añade cada clase individualmente
+            type.split(' ').forEach(cls => messageDiv.classList.add(cls)); // FIX CLAVE AQUÍ
             messageDiv.textContent = text;
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight; // Desplazar al final
@@ -192,5 +193,3 @@
     </script>
 </body>
 </html>
-
-
