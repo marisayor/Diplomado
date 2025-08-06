@@ -167,29 +167,34 @@ else:
 @app.route('/', methods=['GET', 'OPTIONS'])
 def home():
     if request.method == 'OPTIONS':
-        # Esto es necesario para las peticiones CORS preflight
         return '', 200
     return jsonify({"message": "Asistente de Educación en Diabetes en línea. ¡Envía tus preguntas a /ask!"}), 200
 
 @app.route('/ask', methods=['POST'])
 def ask_assistant_api():
     if not qa_chain:
+        print("DEBUG: qa_chain no está disponible al recibir la pregunta.") # DEBUG
         return jsonify({"response": "Lo siento, el asistente no está completamente configurado. No se pudo cargar la base de datos de conocimiento."}), 500
 
     data = request.get_json()
     user_question = data.get('question')
 
     if not user_question:
+        print("DEBUG: Pregunta de usuario vacía.") # DEBUG
         return jsonify({"response": "Por favor, proporcione una pregunta."}), 400
 
     try:
-        print(f"Recibida pregunta: {user_question}")
+        print(f"DEBUG: Recibida pregunta: {user_question}") # DEBUG
+        print("DEBUG: Intentando ejecutar qa_chain.run()...") # DEBUG
         answer = qa_chain.run(user_question)
-        print(f"Respuesta generada: {answer}")
+        print(f"DEBUG: Respuesta generada: {answer}") # DEBUG
         return jsonify({"response": answer})
     except Exception as e:
-        print(f"Error al procesar la pregunta: {e}")
-        return jsonify({"response": f"Lo siento, ocurrió un error al procesar su pregunta: {e}"}), 500
+        print(f"ERROR: Excepción al procesar la pregunta: {e}") # DEBUG
+        # Aquí puedes añadir más detalles del error si 'e' es un objeto complejo
+        import traceback
+        print(f"ERROR: Traceback completo: {traceback.format_exc()}") # DEBUG: Imprime el stack trace completo
+        return jsonify({"response": f"Lo siento, ocurrió un error al procesar su pregunta. Detalle técnico: {e}"}), 500
 
 # --- Ejecutar el servidor Flask ---
 if __name__ == '__main__':
@@ -200,3 +205,4 @@ if __name__ == '__main__':
     # Render usa Gunicorn, por lo que este bloque no se ejecuta en producción.
     # El puerto 10000 es el que usa Render, no 5000.
     app.run(debug=False, host='0.0.0.0', port=os.environ.get('PORT', 5000))
+
