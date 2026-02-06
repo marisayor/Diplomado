@@ -85,3 +85,118 @@ if db_needs_recreation:
             print("Luego, ELIMINE MANUALMENTE la carpeta './chroma_db_diabetes' y REINICIE el script.")
             vector_db = None # Asegurar que vector_db sea None si la eliminación falla
             # En un entorno de producción, aquí se podría considerar salir del programa o lanzar una excepción.
+        except Exception as e:
+            print(f"ERROR al intentar eliminar el directorio persistente '{PERSIST_DIRECTORY}': {e}")
+            print("Se recomienda eliminar la carpeta manualmente y reiniciar el script.")
+            vector_db = None
+
+    # Solo proceder a crear si la eliminación fue exitosa o el directorio no existía
+    if vector_db is None: # Si loading failed, or was empty, or deletion failed
+        documents = []
+        if os.path.exists(PDF_FOLDER_PATH):
+            print(f"Cargando documentos desde: {PDF_FOLDER_PATH}")
+            for filename in os.listdir(PDF_FOLDER_PATH):
+                if filename.lower().endswith(".pdf"):
+                    file_path = os.path.join(PDF_FOLDER_PATH, filename)
+                    try:
+                        loader = PyPDFLoader(file_path)
+                        documents.extend(loader.load())
+                        print(f"  - Cargado: {filename}")
+                    except Exception as e:
+                        print(f"  - Error al cargar {filename}: {e}")
+        else:
+            print(f"ADVERTENCIA: La carpeta '{PDF_FOLDER_PATH}' no existe. No se cargarán PDFs.")
+            print("Usando texto simulado como fallback para demostración.")
+            mock_document_text = """
+            ### Módulo 1: Fundamentos de la Diabetes Mellitus
+            **Definición de Diabetes:** La diabetes mellitus es un grupo de enfermedades metabólicas caracterizadas por hiperglucemia (niveles elevados de glucosa en sangre) resultante de defectos en la secreción de insulina, en la acción de la insulina, o en ambas.
+            """
+            documents = text_splitter.create_documents([mock_document_text])
+
+        if documents:
+            chunks = text_splitter.split_documents(documents)
+            print(f"Documentos divididos en {len(chunks)} fragmentos para la creación de la base de datos.")
+            try:
+                vector_db = Chroma.from_documents(
+                    documents=chunks,
+                    embedding=embeddings_model,
+                    collection_name="diabetes_diploma_docs",
+                    persist_directory=PERSIST_DIRECTORY
+                )
+                print(f"Base de datos vectorial creada y persistida en '{PERSIST_DIRECTORY}'.")
+            except Exception as e:
+                print(f"ERROR: Falló la creación de la base de datos vectorial desde los documentos: {e}")
+                vector_db = None
+        else:
+            print("ERROR: No se encontraron documentos válidos para procesar. El asistente no tendrá una base de conocimiento.")
+            vector_db = None
+
+# --- 3. Configuración del Modelo de Lenguaje (Gemini) ---
+llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2, google_api_key=API_KEY)
+
+# --- 4. Creación de la Cadena RAG ---
+qa_chain = None
+if vector_db:
+    custom_prompt_template = """
+    Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela y un experto en diseño instruccional para pacientes. Tu propósito es guiar a los educadores en diabetes sobre la mejor manera de lograr que los pacientes adquieran **conocimiento** y **autoeficacia** en el manejo de su condición. Para ello, integrarás y aplicarás los principios de la neurociencia del aprendizaje, la teoría de la carga cognitiva, la teoría de la autoeficacia de Bandura, la escucha activa y las herramientas de las precauciones universales de alfabetización en salud, tal como se definen en tus documentos de referencia. Cuando un educador te pregunte cómo enseñar un aspecto específico de la diabetes (ya sea cognitivo, afectivo o psicomotor) o cómo planificar una actividad instruccional, debes:
+1. **Sugerir métodos didácticos** adecuados y concretos.
+2. **Justificar tus sugerencias** explicando cómo estos métodos se alinean con las bases teóricas mencionadas (ej., cómo reducen la carga cognitiva, cómo fomentan la autoeficacia, cómo se adaptan a la alfabetización en salud, o cómo aplican principios de neurociencia).
+3. **Ofrecer ejemplos prácticos y aplicables** en el contexto de la educación en diabetes.
+4. **Enfatizar la diferencia entre 'dar información' y 'educar' terapéuticamente**, promoviendo un enfoque centrado en la capacitación y el empoderamiento del paciente. 5. Puedes utilizar el Ejemplo de actividad para guiarte. Debes basar todas tus respuestas EXCLUSIVAMENTE en el contexto proporcionado por los documentos. Si la información necesaria para responder no se encuentra en el contexto, indica claramente que no puedes responder a esa pregunta. No inventes.
+
+    Contexto: {context}
+
+    Pregunta: {question}
+
+    Respuesta:
+    """
+    CUSTOM_PROMPT = PromptTemplate(template=custom_prompt_template, input_variables=["context", "question"])
+
+    qa_chain = RetrievalQA.from_chain_type(
+        llm,
+        chain_type="stuff",
+        retriever=vector_db.as_retriever(),
+        chain_type_kwargs={"prompt": CUSTOM_PROMPT}
+    )
+    print("Cadena RAG inicializada correctamente.")
+else:
+    print("ADVERTENCIA: La cadena QA no se pudo inicializar porque la base de datos vectorial no está disponible.")
+
+# --- 5. Endpoint de la API Flask ---
+# Ruta raíz para manejar peticiones OPTIONS y GET básicas
+@app.route('/', methods=['GET', 'OPTIONS'])
+def home():
+    if request.method == 'OPTIONS':
+        # Esto es necesario para las peticiones CORS preflight
+        return '', 200
+    return jsonify({"message": "Asistente de Educación en Diabetes en línea. ¡Envía tus preguntas a /ask!"}), 200
+
+@app.route('/ask', methods=['POST'])
+def ask_assistant_api():
+    if not qa_chain:
+        return jsonify({"response": "Lo siento, el asistente no está completamente configurado. No se pudo cargar la base de datos de conocimiento."}), 500
+
+    data = request.get_json()
+    user_question = data.get('question')
+
+    if not user_question:
+        return jsonify({"response": "Por favor, proporcione una pregunta."}), 400
+
+    try:
+        print(f"Recibida pregunta: {user_question}")
+        answer = qa_chain.run(user_question)
+        print(f"Respuesta generada: {answer}")
+        return jsonify({"response": answer})
+    except Exception as e:
+        print(f"Error al procesar la pregunta: {e}")
+        return jsonify({"response": f"Lo siento, ocurrió un error al procesar su pregunta: {e}"}), 500
+
+# --- Ejecutar el servidor Flask ---
+if __name__ == '__main__':
+    print("Iniciando servidor Flask para el asistente de Educación en Diabetes...")
+    print("El servidor estará escuchando en http://127.0.0.1:5000/")
+    print("Asegúrese de que su clave API y la ruta de los PDFs sean correctas.")
+    # CAMBIO CLAVE: Desactivar el modo debug para evitar problemas de bloqueo de archivos
+    # Render usa Gunicorn, por lo que este bloque no se ejecuta en producción.
+    # El puerto 10000 es el que usa Render, no 5000.
+    app.run(debug=False, host='0.0.0.0', port=os.environ.get('PORT', 5000))
