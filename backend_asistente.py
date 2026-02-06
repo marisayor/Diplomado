@@ -160,20 +160,3 @@ def ask():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
-```
-eof
-
-### Acción requerida en tu `requirements.txt`:
-Para que el código anterior funcione, asegúrate de que tu archivo `requirements.txt` en GitHub incluya estas líneas (o actualízalas):
-
-```text
-flask
-flask-cors
-gunicorn
-google-generativeai
-langchain
-langchain-community
-langchain-google-genai
-langchain-text-splitters
-pypdf
-chromadb
