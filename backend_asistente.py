@@ -1,9 +1,9 @@
 import google.generativeai as genai
-# Importaciones corregidas para las versiones más recientes de LangChain (v0.2+)
+# Importaciones corregidas para LangChain v0.2+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Chroma
-from langchain.chains.retrieval_qa.base import RetrievalQA  # ✅ Importación corregida
+from langchain.chains.retrieval_qa.base import RetrievalQA  # ✅ IMPORT CORREGIDO (línea 6)
 from langchain.prompts import PromptTemplate
 import os
 from langchain_community.document_loaders import PyPDFLoader
@@ -154,7 +154,6 @@ def ask():
     user_question = data.get('question')
 
     try:
-        # Usamos invoke en lugar de run para compatibilidad con LangChain moderno
         response = qa_chain.invoke({"query": user_question})
         return jsonify({"response": response["result"]})
     except Exception as e:
