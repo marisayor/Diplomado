@@ -16,13 +16,13 @@ app = Flask(__name__)
 CORS(app)
 
 # --- 1. Configuración de la API de Google Gemini ---
-API_KEY = os.getenv("AIzaSyDtisDRhouXt21-EXXIgZNkrN2rv-U9POU")
+API_KEY = os.getenv("GOOGLE_API_KEY")
 
 if not API_KEY:
     print("ERROR: La variable de entorno GOOGLE_API_KEY no está configurada. El asistente no funcionará.")
 
 genai.configure(api_key=API_KEY)
-os.environ["AIzaSyDtisDRhouXt21-EXXIgZNkrN2rv-U9POU"] = API_KEY
+os.environ["GOOGLE_API_KEY"] = API_KEY
 
 # --- 2. Carga y Procesamiento de Documentos ---
 PDF_FOLDER_PATH = "Archivos PDF"
