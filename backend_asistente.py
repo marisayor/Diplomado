@@ -3,7 +3,7 @@ import google.generativeai as genai
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Chroma
-from langchain.chains.retrieval_qa.base import RetrievalQA  # ✅ IMPORT CORREGIDO (línea 6)
+from from langchain.chains.retrieval_qa.base import RetrievalQA
 from langchain.prompts import PromptTemplate
 import os
 from langchain_community.document_loaders import PyPDFLoader
