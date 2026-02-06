@@ -1,9 +1,9 @@
 import google.generativeai as genai
-# Importaciones corregidas para LangChain v0.2+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Chroma
-from langchain.chains.retrieval_qa.base import RetrievalQA  # 
+from langchain.chains.combine_documents import create_stuff_documents_chain  # ✅ Nuevo enfoque
+from langchain.chains import create_retrieval_chain  # ✅ Nuevo enfoque
 from langchain.prompts import PromptTemplate
 import os
 from langchain_community.document_loaders import PyPDFLoader
@@ -21,16 +21,15 @@ CORS(app)
 API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Variables globales de estado
-qa_chain = None
+retrieval_chain = None  # ✅ Cambiado de qa_chain a retrieval_chain
 is_initializing = False
 init_error = None
 thread_started = False
 
 def background_setup():
     """Proceso de carga en segundo plano para evitar el timeout de Render/Gunicorn"""
-    global qa_chain, is_initializing, init_error
+    global retrieval_chain, is_initializing, init_error  # ✅ Actualizado
     
-    # Pequeña pausa para permitir que Flask se vincule al puerto primero
     time.sleep(2)
     
     print("SISTEMA: Iniciando procesamiento de documentos en segundo plano...")
@@ -49,13 +48,11 @@ def background_setup():
         PDF_FOLDER_PATH = "Archivos PDF"
         PERSIST_DIRECTORY = "./chroma_db_diabetes"
 
-        # Modelo de Embeddings
         embeddings_model = GoogleGenerativeAIEmbeddings(
             model="models/text-embedding-004", 
             google_api_key=API_KEY
         )
 
-        # Limpiar base de datos previa para evitar conflictos de esquema
         if os.path.exists(PERSIST_DIRECTORY):
             print("SISTEMA: Limpiando base de datos persistente anterior...")
             try:
@@ -105,11 +102,11 @@ def background_setup():
         
         prompt = PromptTemplate(template=template, input_variables=["context", "question"])
 
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
+        # ✅ NUEVO: Crear cadena con enfoque moderno de LangChain v0.2+
+        document_chain = create_stuff_documents_chain(llm, prompt)
+        retrieval_chain = create_retrieval_chain(
             retriever=vector_db.as_retriever(),
-            chain_type_kwargs={"prompt": prompt}
+            combine_docs_chain=document_chain
         )
         
         print("SISTEMA: ¡Asistente RAG listo!")
@@ -130,20 +127,20 @@ def home():
         
     return jsonify({
         "status": "online", 
-        "rag_ready": qa_chain is not None,
+        "rag_ready": retrieval_chain is not None,  # ✅ Actualizado
         "is_initializing": is_initializing,
         "error": init_error
     })
 
 @app.route('/ask', methods=['POST'])
 def ask():
-    global qa_chain, thread_started
+    global retrieval_chain, thread_started  # ✅ Actualizado
     
     if not thread_started:
         thread_started = True
         threading.Thread(target=background_setup, daemon=True).start()
 
-    if qa_chain is None:
+    if retrieval_chain is None:  # ✅ Actualizado
         if is_initializing:
             return jsonify({"response": "El asistente se está iniciando y procesando los documentos PDF. Por favor, espera unos segundos e intenta de nuevo."}), 503
         if init_error:
@@ -154,9 +151,9 @@ def ask():
     user_question = data.get('question')
 
     try:
-        # Usamos invoke en lugar de run para compatibilidad con LangChain moderno
-        response = qa_chain.invoke({"query": user_question})
-        return jsonify({"response": response["result"]})
+        # ✅ NUEVO: Usar invoke() con la nueva cadena
+        response = retrieval_chain.invoke({"input": user_question})  # ✅ "input" en lugar de "query"
+        return jsonify({"response": response["answer"]})  # ✅ "answer" en lugar de "result"
     except Exception as e:
         return jsonify({"response": f"Error al procesar la consulta: {str(e)}"}), 500
 
