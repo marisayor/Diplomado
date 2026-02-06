@@ -11,6 +11,7 @@ from flask_cors import CORS
 import shutil
 import traceback
 import threading
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -22,10 +23,14 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 qa_chain = None
 is_initializing = False
 init_error = None
+thread_started = False
 
 def background_setup():
     """Proceso de carga en segundo plano para evitar el timeout de Render/Gunicorn"""
     global qa_chain, is_initializing, init_error
+    
+    # Pequeña pausa para dejar que el servidor Flask se asiente en el puerto
+    time.sleep(2)
     
     print("SISTEMA: Iniciando procesamiento de documentos en segundo plano...")
     is_initializing = True
@@ -49,34 +54,35 @@ def background_setup():
             google_api_key=API_KEY
         )
 
-        # Limpiar base de datos previa para forzar uso de nueva clave y evitar corrupción
+        # Limpiar base de datos previa
         if os.path.exists(PERSIST_DIRECTORY):
             print("SISTEMA: Limpiando base de datos persistente anterior...")
-            shutil.rmtree(PERSIST_DIRECTORY)
+            try:
+                shutil.rmtree(PERSIST_DIRECTORY)
+            except:
+                pass
 
         documents = []
         if os.path.exists(PDF_FOLDER_PATH):
-            print(f"SISTEMA: Buscando archivos en {PDF_FOLDER_PATH}...")
             pdf_files = [f for f in os.listdir(PDF_FOLDER_PATH) if f.lower().endswith(".pdf")]
+            print(f"SISTEMA: Encontrados {len(pdf_files)} archivos PDF.")
             
             for filename in pdf_files:
                 try:
                     loader = PyPDFLoader(os.path.join(PDF_FOLDER_PATH, filename))
                     documents.extend(loader.load())
-                    print(f"SISTEMA: Cargado con éxito {filename}")
+                    print(f"SISTEMA: Cargado {filename}")
                 except Exception as e:
                     print(f"Error cargando {filename}: {e}")
         
         if not documents:
-            init_error = "No se encontraron PDFs en la carpeta especificada."
+            init_error = "No se encontraron PDFs en la carpeta 'Archivos PDF'."
             print(f"SISTEMA: {init_error}")
             return
 
-        # Procesamiento de texto
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks = text_splitter.split_documents(documents)
 
-        # Creación de la base vectorial (Este es el paso que suele tardar)
         print(f"SISTEMA: Creando base vectorial con {len(chunks)} fragmentos...")
         vector_db = Chroma.from_documents(
             documents=chunks,
@@ -84,13 +90,10 @@ def background_setup():
             persist_directory=PERSIST_DIRECTORY
         )
 
-        # Configurar el modelo Gemini más reciente y estable
         llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
 
         template = """Eres un experto en educación en diabetes de la UCV. 
-        Utiliza exclusivamente el siguiente contexto para responder de forma pedagógica.
-        Si la información no está en el contexto, indícalo claramente.
-        
+        Utiliza el contexto para responder de forma pedagógica.
         Contexto: {context}
         Pregunta: {question}
         Respuesta:"""
@@ -104,7 +107,7 @@ def background_setup():
             chain_type_kwargs={"prompt": prompt}
         )
         
-        print("SISTEMA: ¡Asistente RAG listo para recibir consultas!")
+        print("SISTEMA: ¡Asistente RAG listo!")
 
     except Exception as e:
         init_error = str(e)
@@ -115,50 +118,43 @@ def background_setup():
 
 @app.route('/', methods=['GET'])
 def home():
-    status = "online"
-    if is_initializing:
-        status = "inicializando documentos"
-    elif qa_chain:
-        status = "listo"
-    elif init_error:
-        status = f"error: {init_error}"
+    global thread_started
+    # Iniciar el hilo en la primera visita si no ha empezado
+    if not thread_started:
+        thread_started = True
+        threading.Thread(target=background_setup, daemon=True).start()
         
     return jsonify({
-        "status": status, 
+        "status": "online", 
         "rag_ready": qa_chain is not None,
-        "is_initializing": is_initializing
+        "is_initializing": is_initializing,
+        "error": init_error
     })
 
 @app.route('/ask', methods=['POST'])
 def ask():
+    global qa_chain, thread_started
+    
+    # Failsafe para iniciar el hilo si la primera petición es /ask
+    if not thread_started:
+        thread_started = True
+        threading.Thread(target=background_setup, daemon=True).start()
+
     if qa_chain is None:
         if is_initializing:
-            return jsonify({"response": "El asistente aún está procesando los documentos (esto toma 1-2 minutos al iniciar). Por favor, intenta de nuevo en un momento."}), 503
+            return jsonify({"response": "El asistente se está iniciando. Por favor, espera 60 segundos."}), 503
         if init_error:
-            return jsonify({"response": f"El asistente no pudo iniciarse correctamente: {init_error}"}), 500
-        
-        # Si por alguna razón no se ha lanzado el hilo (failsafe)
-        thread = threading.Thread(target=background_setup)
-        thread.start()
-        return jsonify({"response": "Iniciando el motor de búsqueda. Por favor, espera un minuto."}), 503
+            return jsonify({"response": f"Error de inicio: {init_error}"}), 500
+        return jsonify({"response": "El motor RAG se está activando, intenta en un momento."}), 503
 
     data = request.get_json()
     user_question = data.get('question')
-
-    if not user_question:
-        return jsonify({"response": "No enviaste ninguna pregunta."}), 400
 
     try:
         answer = qa_chain.run(user_question)
         return jsonify({"response": answer})
     except Exception as e:
-        print(f"Error en consulta: {e}")
-        return jsonify({"response": f"Ocurrió un error al procesar tu pregunta: {str(e)}"}), 500
-
-# Iniciar la carga en segundo plano apenas arranca el script
-# Esto ocurre ANTES de que Flask tome el control del puerto
-setup_thread = threading.Thread(target=background_setup)
-setup_thread.start()
+        return jsonify({"response": f"Error en consulta: {str(e)}"}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
