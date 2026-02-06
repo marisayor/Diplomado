@@ -1,14 +1,11 @@
 Flask==3.0.3
 flask-cors==5.0.0
 gunicorn==25.0.2
-
-# LangChain v0.2+ compatible con Python 3.13
 langchain==0.2.15
-langchain-community==0.2.15
 langchain-core==0.2.30
+langchain-community==0.2.15
 langchain-text-splitters==0.2.2
 langchain-google-genai==2.0.0
-
 google-generativeai==0.8.2
 chromadb==0.5.5
 pypdf==4.3.1
