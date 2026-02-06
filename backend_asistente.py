@@ -10,11 +10,10 @@ import shutil
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Chroma
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain  # ✅ NUEVO
+from langchain.chains import create_retrieval_chain  # ✅ NUEVO
 from langchain.prompts import PromptTemplate
 from langchain_community.document_loaders import PyPDFLoader
-
 app = Flask(__name__)
 CORS(app)
 
