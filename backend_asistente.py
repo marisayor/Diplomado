@@ -1,165 +1,87 @@
 import google.generativeai as genai
-# Importaciones corregidas para las versiones más recientes de LangChain (v0.2+)
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Chroma
-from langchain.chains.retrieval_qa.base import RetrievalQA  # ✅ Importación corregida
+from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 import os
 from langchain_community.document_loaders import PyPDFLoader
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import shutil
-import traceback
-import threading
-import time
+from flask import Flask, request, jsonify # Importar Flask y sus utilidades
+from flask_cors import CORS # Para manejar CORS, necesario para el frontend
+import shutil # Importar shutil para eliminar directorios
+import gc # Importar garbage collector para forzar liberación de memoria
 
+# --- Configuración de Flask ---
 app = Flask(__name__)
-CORS(app)
+CORS(app) # Habilitar CORS para permitir peticiones desde el frontend web
 
-# --- 1. Configuración de la API ---
+# --- 1. Configuración de la API de Google Gemini ---
+# IMPORTANTE: ¡NO USES LA CLAVE API DIRECTAMENTE EN EL CÓDIGO!
+# Se obtiene de las variables de entorno de Render.
 API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# Variables globales de estado
-qa_chain = None
-is_initializing = False
-init_error = None
-thread_started = False
+# Verificar si la clave API está disponible
+if not API_KEY:
+    print("ERROR: La variable de entorno GOOGLE_API_KEY no está configurada. El asistente no funcionará.")
+    # En un entorno de producción, podrías considerar salir o lanzar una excepción aquí.
+    # Para este caso, permitiremos que el script continúe para que el error sea capturado
+    # por la inicialización de genai o langchain.
 
-def background_setup():
-    """Proceso de carga en segundo plano para evitar el timeout de Render/Gunicorn"""
-    global qa_chain, is_initializing, init_error
-    
-    # Pequeña pausa para permitir que Flask se vincule al puerto primero
-    time.sleep(2)
-    
-    print("SISTEMA: Iniciando procesamiento de documentos en segundo plano...")
-    is_initializing = True
-    init_error = None
-    
+genai.configure(api_key=API_KEY)
+os.environ["GOOGLE_API_KEY"] = API_KEY # Asegura que Langchain también la use
+
+# --- 2. Carga y Procesamiento de Documentos (Se ejecuta una vez al iniciar el servidor) ---
+PDF_FOLDER_PATH = "Archivos PDF" # <--- ¡VERIFICA Y AJUSTA TU RUTA!
+PERSIST_DIRECTORY = "./chroma_db_diabetes"
+
+# Inicializar text_splitter una sola vez
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200
+)
+
+# Inicializar embeddings_model una sola vez (necesita la API_KEY)
+embeddings_model = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=API_KEY)
+
+vector_db = None # Inicializar vector_db a None
+db_needs_recreation = False # Bandera para indicar si la DB necesita ser recreada
+
+# --- Lógica para cargar o crear la base de datos vectorial ---
+# Primero, intentar cargar la base de datos existente
+if os.path.exists(PERSIST_DIRECTORY) and os.path.isdir(PERSIST_DIRECTORY):
     try:
-        if not API_KEY:
-            init_error = "No hay GOOGLE_API_KEY configurada."
-            print(f"CRÍTICO: {init_error}")
-            return
-
-        genai.configure(api_key=API_KEY)
-        os.environ["GOOGLE_API_KEY"] = API_KEY
-
-        PDF_FOLDER_PATH = "Archivos PDF"
-        PERSIST_DIRECTORY = "./chroma_db_diabetes"
-
-        # Modelo de Embeddings
-        embeddings_model = GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004", 
-            google_api_key=API_KEY
-        )
-
-        # Limpiar base de datos previa para evitar conflictos de esquema
-        if os.path.exists(PERSIST_DIRECTORY):
-            print("SISTEMA: Limpiando base de datos persistente anterior...")
-            try:
-                shutil.rmtree(PERSIST_DIRECTORY)
-            except:
-                pass
-
-        documents = []
-        if os.path.exists(PDF_FOLDER_PATH):
-            pdf_files = [f for f in os.listdir(PDF_FOLDER_PATH) if f.lower().endswith(".pdf")]
-            print(f"SISTEMA: Encontrados {len(pdf_files)} archivos PDF.")
-            
-            for filename in pdf_files:
-                try:
-                    loader = PyPDFLoader(os.path.join(PDF_FOLDER_PATH, filename))
-                    documents.extend(loader.load())
-                    print(f"SISTEMA: Cargado {filename}")
-                except Exception as e:
-                    print(f"Error cargando {filename}: {e}")
-        
-        if not documents:
-            init_error = "No se encontraron PDFs en la carpeta 'Archivos PDF'."
-            print(f"SISTEMA: {init_error}")
-            return
-
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        chunks = text_splitter.split_documents(documents)
-
-        print(f"SISTEMA: Creando base vectorial con {len(chunks)} fragmentos...")
-        vector_db = Chroma.from_documents(
-            documents=chunks,
-            embedding=embeddings_model,
-            persist_directory=PERSIST_DIRECTORY
-        )
-
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
-
-        # Prompt académico personalizado (UCV)
-        template = """Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela y un experto en diseño instruccional para pacientes. Tu propósito es guiar a los educadores en diabetes sobre la mejor manera de lograr que los pacientes adquieran conocimiento y autoeficacia en el manejo de su condición. 
-
-        Utiliza el siguiente contexto para responder de forma pedagógica. Si la respuesta no está en el contexto, indícalo claramente.
-        
-        Contexto: {context}
-        Pregunta: {question}
-        
-        Respuesta:"""
-        
-        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
-
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=vector_db.as_retriever(),
-            chain_type_kwargs={"prompt": prompt}
-        )
-        
-        print("SISTEMA: ¡Asistente RAG listo!")
-
+        print(f"Intentando cargar la base de datos vectorial existente desde '{PERSIST_DIRECTORY}'...")
+        vector_db = Chroma(persist_directory=PERSIST_DIRECTORY, embedding_function=embeddings_model)
+        # Una pequeña verificación para asegurar que la colección no esté vacía si se cargó
+        if not vector_db.get()['ids']: # Si está vacía
+            print(f"Base de datos cargada desde '{PERSIST_DIRECTORY}' pero parece vacía. Se marcará para recreación.")
+            db_needs_recreation = True
+            # Intentar liberar el objeto y forzar la recolección de basura para liberar el archivo
+            del vector_db
+            vector_db = None
+            gc.collect()
     except Exception as e:
-        init_error = str(e)
-        print(f"ERROR EN RAG: {e}")
-        traceback.print_exc()
-    finally:
-        is_initializing = False
+        print(f"Error al cargar la base de datos persistente: {e}. Se marcará para recreación.")
+        db_needs_recreation = True
+        # Intentar liberar el objeto y forzar la recolección de basura
+        del vector_db
+        vector_db = None
+        gc.collect()
+else:
+    print(f"Directorio de persistencia '{PERSIST_DIRECTORY}' no encontrado. Se procederá a crear una nueva base de datos.")
+    db_needs_recreation = True
 
-@app.route('/', methods=['GET'])
-def home():
-    global thread_started
-    if not thread_started:
-        thread_started = True
-        threading.Thread(target=background_setup, daemon=True).start()
-        
-    return jsonify({
-        "status": "online", 
-        "rag_ready": qa_chain is not None,
-        "is_initializing": is_initializing,
-        "error": init_error
-    })
-
-@app.route('/ask', methods=['POST'])
-def ask():
-    global qa_chain, thread_started
-    
-    if not thread_started:
-        thread_started = True
-        threading.Thread(target=background_setup, daemon=True).start()
-
-    if qa_chain is None:
-        if is_initializing:
-            return jsonify({"response": "El asistente se está iniciando y procesando los documentos PDF. Por favor, espera unos segundos e intenta de nuevo."}), 503
-        if init_error:
-            return jsonify({"response": f"Error de configuración: {init_error}"}), 500
-        return jsonify({"response": "El motor RAG no está listo."}), 503
-
-    data = request.get_json()
-    user_question = data.get('question')
-
-    try:
-        # Usamos invoke en lugar de run para compatibilidad con LangChain moderno
-        response = qa_chain.invoke({"query": user_question})
-        return jsonify({"response": response["result"]})
-    except Exception as e:
-        return jsonify({"response": f"Error al procesar la consulta: {str(e)}"}), 500
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+# Si la base de datos necesita ser recreada, intentar eliminar el directorio antiguo y crear uno nuevo
+if db_needs_recreation:
+    if os.path.exists(PERSIST_DIRECTORY):
+        try:
+            print(f"Intentando eliminar el directorio persistente '{PERSIST_DIRECTORY}' para recrearlo...")
+            shutil.rmtree(PERSIST_DIRECTORY)
+            print("Directorio eliminado exitosamente.")
+        except PermissionError as e:
+            print(f"ERROR CRÍTICO: Permiso denegado al intentar eliminar '{PERSIST_DIRECTORY}': {e}")
+            print("Esto ocurre si el archivo está siendo utilizado por otro proceso (ej. una terminal anterior, explorador de archivos, antivirus).")
+            print("Por favor, CIERRE TODAS LAS VENTANAS DE EXPLORADOR DE ARCHIVOS, TERMINALES O PROGRAMAS que puedan estar accediendo a la carpeta './chroma_db_diabetes'.")
+            print("Luego, ELIMINE MANUALMENTE la carpeta './chroma_db_diabetes' y REINICIE el script.")
+            vector_db = None # Asegurar que vector_db sea None si la eliminación falla
+            # En un entorno de producción, aquí se podría considerar salir del programa o lanzar una excepción.
