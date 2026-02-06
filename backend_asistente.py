@@ -10,167 +10,94 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import shutil
 import gc
+import traceback
 
-# --- Configuración de Flask ---
 app = Flask(__name__)
 CORS(app)
 
-# --- 1. Configuración de la API de Google Gemini ---
+# --- 1. Configuración de la API ---
 API_KEY = os.getenv("GOOGLE_API_KEY")
 
-if not API_KEY:
-    print("ERROR: La variable de entorno GOOGLE_API_KEY no está configurada. El asistente no funcionará.")
+# Variable global para la cadena RAG
+qa_chain = None
 
-genai.configure(api_key=API_KEY)
-os.environ["GOOGLE_API_KEY"] = API_KEY
-
-# --- 2. Carga y Procesamiento de Documentos ---
-PDF_FOLDER_PATH = "Archivos PDF"
-PERSIST_DIRECTORY = "./chroma_db_diabetes"
-
-# Inicializar text_splitter una sola vez
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200
-)
-
-# CAMBIO 1: Actualizar el modelo de embeddings
-embeddings_model = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=API_KEY)
-
-vector_db = None
-db_needs_recreation = False
-
-# --- Lógica para cargar o crear la base de datos vectorial (sin cambios) ---
-if os.path.exists(PERSIST_DIRECTORY) and os.path.isdir(PERSIST_DIRECTORY):
+def inicializar_asistente():
+    global qa_chain
     try:
-        print(f"Intentando cargar la base de datos vectorial existente desde '{PERSIST_DIRECTORY}'...")
-        vector_db = Chroma(persist_directory=PERSIST_DIRECTORY, embedding_function=embeddings_model)
-        if not vector_db.get()['ids']:
-            print(f"Base de datos cargada desde '{PERSIST_DIRECTORY}' pero parece vacía. Se marcará para recreación.")
-            db_needs_recreation = True
-            del vector_db
-            vector_db = None
-            gc.collect()
-    except Exception as e:
-        print(f"Error al cargar la base de datos persistente: {e}. Se marcará para recreación.")
-        db_needs_recreation = True
-        del vector_db
-        vector_db = None
-        gc.collect()
-else:
-    print(f"Directorio de persistencia '{PERSIST_DIRECTORY}' no encontrado. Se procederá a crear una nueva base de datos.")
-    db_needs_recreation = True
+        if not API_KEY:
+            print("CRÍTICO: No hay GOOGLE_API_KEY en las variables de entorno.")
+            return
 
-if db_needs_recreation:
-    if os.path.exists(PERSIST_DIRECTORY):
-        try:
-            print(f"Intentando eliminar el directorio persistente '{PERSIST_DIRECTORY}' para recrearlo...")
+        genai.configure(api_key=API_KEY)
+        os.environ["GOOGLE_API_KEY"] = API_KEY
+
+        PDF_FOLDER_PATH = "Archivos PDF"
+        PERSIST_DIRECTORY = "./chroma_db_diabetes"
+
+        embeddings_model = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=API_KEY)
+
+        # Forzar limpieza si hay error previo
+        if os.path.exists(PERSIST_DIRECTORY):
+            print("Limpiando base de datos previa para evitar conflictos...")
             shutil.rmtree(PERSIST_DIRECTORY)
-            print("Directorio eliminado exitosamente.")
-        except Exception as e:
-            print(f"ERROR al intentar eliminar el directorio persistente '{PERSIST_DIRECTORY}': {e}")
-            vector_db = None
 
-    if vector_db is None:
         documents = []
         if os.path.exists(PDF_FOLDER_PATH):
-            print(f"Cargando documentos desde: {PDF_FOLDER_PATH}")
+            print(f"Cargando PDFs desde {PDF_FOLDER_PATH}...")
             for filename in os.listdir(PDF_FOLDER_PATH):
                 if filename.lower().endswith(".pdf"):
-                    file_path = os.path.join(PDF_FOLDER_PATH, filename)
-                    try:
-                        loader = PyPDFLoader(file_path)
-                        documents.extend(loader.load())
-                        print(f"  - Cargado: {filename}")
-                    except Exception as e:
-                        print(f"  - Error al cargar {filename}: {e}")
-        else:
-            print(f"ADVERTENCIA: La carpeta '{PDF_FOLDER_PATH}' no existe. No se cargarán PDFs.")
-            mock_document_text = """
-            ### Módulo 1: Fundamentos de la Diabetes Mellitus
-            **Definición de Diabetes:** La diabetes mellitus es un grupo de enfermedades metabólicas caracterizadas por hiperglucemia (niveles elevados de glucosa en sangre) resultante de defectos en la secreción de insulina, en la acción de la insulina, o en ambas.
-            """
-            documents = text_splitter.create_documents([mock_document_text])
+                    loader = PyPDFLoader(os.path.join(PDF_FOLDER_PATH, filename))
+                    documents.extend(loader.load())
+        
+        if not documents:
+            print("ADVERTENCIA: No se encontraron PDFs. Usando modo básico.")
+            return
 
-        if documents:
-            chunks = text_splitter.split_documents(documents)
-            print(f"Documentos divididos en {len(chunks)} fragmentos para la creación de la base de datos.")
-            try:
-                vector_db = Chroma.from_documents(
-                    documents=chunks,
-                    embedding=embeddings_model,
-                    collection_name="diabetes_diploma_docs",
-                    persist_directory=PERSIST_DIRECTORY
-                )
-                print(f"Base de datos vectorial creada y persistida en '{PERSIST_DIRECTORY}'.")
-            except Exception as e:
-                print(f"ERROR: Falló la creación de la base de datos vectorial desde los documentos: {e}")
-                vector_db = None
-        else:
-            print("ERROR: No se encontraron documentos válidos para procesar. El asistente no tendrá una base de conocimiento.")
-            vector_db = None
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        chunks = text_splitter.split_documents(documents)
 
-# --- 3. Configuración del Modelo de Lenguaje (Gemini) ---
-# CAMBIO 2: Actualizar el modelo principal a gemini-2.5-flash
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, google_api_key=API_KEY)
+        vector_db = Chroma.from_documents(
+            documents=chunks,
+            embedding=embeddings_model,
+            persist_directory=PERSIST_DIRECTORY
+        )
 
-# --- 4. Creación de la Cadena RAG (sin cambios en la lógica) ---
-qa_chain = None
-if vector_db:
-    custom_prompt_template = """
-    Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela y un experto en diseño instruccional para pacientes. Tu propósito es guiar a los educadores en diabetes sobre la mejor manera de lograr que los pacientes adquieran **conocimiento** y **autoeficacia** en el manejo de su condición. Para ello, integrarás y aplicarás los principios de la neurociencia del aprendizaje, la teoría de la carga cognitiva, la teoría de la autoeficacia de Bandura, la escucha activa y las herramientas de las precauciones universales de alfabetización en salud, tal como se definen en tus documentos de referencia. Cuando un educador te pregunte cómo enseñar un aspecto específico de la diabetes (ya sea cognitivo, afectivo o psicomotor) o cómo planificar una actividad instruccional, debes:
-1. **Sugerir métodos didácticos** adecuados y concretos.
-2. **Justificar tus sugerencias** explicando cómo estos métodos se alinean con las bases teóricas mencionadas (ej., cómo reducen la carga cognitiva, cómo fomentan la autoeficacia, cómo se adaptan a la alfabetización en salud, o cómo aplican principios de neurociencia).
-3. **Ofrecer ejemplos prácticos y aplicables** en el contexto de la educación en diabetes.
-4. **Enfatizar la diferencia entre 'dar información' y 'educar' terapéuticamente**, promoviendo un enfoque centrado en la capacitación y el empoderamiento del paciente. 5. Puedes utilizar el Ejemplo de actividad para guiarte. Debes basar todas tus respuestas EXCLUSIVAMENTE en el contexto proporcionado por los documentos. Si la información necesaria para responder no se encuentra en el contexto, indica claramente que no puedes responder a esa pregunta. No inventes.
+        llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.2, google_api_key=API_KEY)
 
-    Contexto: {context}
+        template = """Responde como experto en diabetes usando el contexto: {context}. Pregunta: {question}"""
+        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
 
-    Pregunta: {question}
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=vector_db.as_retriever(),
+            chain_type_kwargs={"prompt": prompt}
+        )
+        print("SISTEMA: Asistente RAG listo.")
 
-    Respuesta:
-    """
-    CUSTOM_PROMPT = PromptTemplate(template=custom_prompt_template, input_variables=["context", "question"])
+    except Exception as e:
+        print(f"ERROR DURANTE INICIALIZACIÓN: {e}")
+        traceback.print_exc()
 
-    qa_chain = RetrievalQA.from_chain_type(
-        llm,
-        chain_type="stuff",
-        retriever=vector_db.as_retriever(),
-        chain_type_kwargs={"prompt": CUSTOM_PROMPT}
-    )
-    print("Cadena RAG inicializada correctamente.")
-else:
-    print("ADVERTENCIA: La cadena QA no se pudo inicializar porque la base de datos vectorial no está disponible.")
+# Intentar inicializar al cargar el módulo
+inicializar_asistente()
 
-# --- 5. Endpoint de la API Flask (sin cambios) ---
-@app.route('/', methods=['GET', 'OPTIONS'])
+@app.route('/', methods=['GET'])
 def home():
-    if request.method == 'OPTIONS':
-        return '', 200
-    return jsonify({"message": "Asistente de Educación en Diabetes en línea. ¡Envía tus preguntas a /ask!"}), 200
-
-@app.route('/test', methods=['GET'])
-def test_endpoint():
-    return jsonify({"message": "¡Hola desde el backend! El servidor Flask está funcionando."}), 200
-
+    return jsonify({"status": "online", "rag_active": qa_chain is not None})
 
 @app.route('/ask', methods=['POST'])
-def ask_assistant_api():
+def ask():
     if not qa_chain:
-        return jsonify({"response": "Lo siento, el asistente no está completamente configurado. No se pudo cargar la base de datos de conocimiento."}), 500
-
+        return jsonify({"response": "El asistente se está iniciando o tuvo un error. Revisa los logs."}), 503
+    
     data = request.get_json()
-    user_question = data.get('question')
-
-    if not user_question:
-        return jsonify({"response": "Por favor, proporcione una pregunta."}), 400
-
     try:
-        answer = qa_chain.run(user_question)
+        answer = qa_chain.run(data.get('question'))
         return jsonify({"response": answer})
     except Exception as e:
-        return jsonify({"response": f"Lo siento, ocurrió un error al procesar su pregunta. Detalle técnico: {e}"}), 500
+        return jsonify({"response": f"Error: {str(e)}"}), 500
 
-# --- Ejecutar el servidor Flask ---
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
