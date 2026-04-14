@@ -8,6 +8,6 @@ langchain-community==0.3.7
 langchain-text-splitters==0.3.2
 langchain-google-genai==2.0.5
 
-google-generativeai==0.7.2
+google-generativeai==0.8.2
 chromadb==0.5.5
 pypdf==4.3.1
