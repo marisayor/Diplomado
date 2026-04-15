@@ -49,7 +49,7 @@ print(f"SISTEMA: ¿Existe la carpeta?: {os.path.exists(PDF_FOLDER_PATH)}")
 
         # ✅ CORRECCIÓN: Usar el formato correcto del modelo
         embeddings_model = GoogleGenerativeAIEmbeddings(
-            model="text-embedding-004",  # ✅ Sin "models/" - Formato correcto
+            model="text-embedding-004",  
             google_api_key=API_KEY
         )
 
