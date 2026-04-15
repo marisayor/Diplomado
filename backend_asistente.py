@@ -43,7 +43,7 @@ def background_setup():
         PERSIST_DIRECTORY = "./chroma_db_diabetes"
 
         embeddings_model = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-003",
+    model="text-embedding-003",
     google_api_key=API_KEY
         )
 
