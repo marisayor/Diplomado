@@ -39,8 +39,13 @@ def background_setup():
         genai.configure(api_key=API_KEY)
         os.environ["GOOGLE_API_KEY"] = API_KEY
 
-        PDF_FOLDER_PATH = "Archivos PDF"
-        PERSIST_DIRECTORY = "./chroma_db_diabetes"
+        SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PDF_FOLDER_PATH = os.path.join(SCRIPT_DIR, "Archivos PDF")
+PERSIST_DIRECTORY = os.path.join(SCRIPT_DIR, "chroma_db_diabetes")
+
+print(f"SISTEMA: Buscando PDFs en: {PDF_FOLDER_PATH}")
+print(f"SISTEMA: ¿Existe la carpeta?: {os.path.exists(PDF_FOLDER_PATH)}")
+
 
         # ✅ CORRECCIÓN: Usar el formato correcto del modelo
         embeddings_model = GoogleGenerativeAIEmbeddings(
