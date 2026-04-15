@@ -1,4 +1,9 @@
 import google.generativeai as genai
+genai.configure(api_key=API_KEY)
+print("Modelos disponibles:")
+for model in genai.list_models():
+    if 'embed' in model.name.lower():
+        print(f"  - {model.name}")
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Chroma
