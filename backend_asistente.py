@@ -1,14 +1,8 @@
 import google.generativeai as genai
-genai.configure(api_key=API_KEY)
-print("Modelos disponibles:")
-for model in genai.list_models():
-    if 'embed' in model.name.lower():
-        print(f"  - {model.name}")
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Chroma
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains import create_retrieval_chain
+from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 import os
 from langchain_community.document_loaders import PyPDFLoader
@@ -19,50 +13,63 @@ import traceback
 import threading
 import time
 
+# Inicialización de Flask
 app = Flask(__name__)
 CORS(app)
 
+# --- Configuración de API ---
 API_KEY = os.getenv("GOOGLE_API_KEY")
-retrieval_chain = None
+
+# Variables de estado global
+qa_chain = None
 is_initializing = False
 init_error = None
 thread_started = False
 
 def background_setup():
-    global retrieval_chain, is_initializing, init_error
-    time.sleep(2)
-    print("SISTEMA: Iniciando procesamiento de documentos en segundo plano...")
+    """
+    Configura el motor RAG en un hilo secundario para evitar timeouts en Render.
+    """
+    global qa_chain, is_initializing, init_error
+    
+    # Pausa para asegurar estabilidad inicial del servidor
+    time.sleep(3)
+    
+    print("SISTEMA: Iniciando procesamiento de documentos...")
     is_initializing = True
     init_error = None
     
     try:
         if not API_KEY:
-            init_error = "No hay GOOGLE_API_KEY configurada."
+            init_error = "Error: GOOGLE_API_KEY no encontrada."
             print(f"CRÍTICO: {init_error}")
             return
 
         genai.configure(api_key=API_KEY)
-        os.environ["GOOGLE_API_KEY"] = API_KEY
 
         PDF_FOLDER_PATH = "Archivos PDF"
         PERSIST_DIRECTORY = "./chroma_db_diabetes"
 
+        # CORRECCIÓN ERROR 400: Se usa el nombre del modelo sin "models/"
         embeddings_model = GoogleGenerativeAIEmbeddings(
-    model="textembedding-004",
-    google_api_key=API_KEY
+            model="text-embedding-004", 
+            google_api_key=API_KEY
         )
 
+        # Limpiar base de datos previa
         if os.path.exists(PERSIST_DIRECTORY):
-            print("SISTEMA: Limpiando base de datos persistente anterior...")
+            print("SISTEMA: Limpiando base de datos anterior...")
             try:
                 shutil.rmtree(PERSIST_DIRECTORY)
-            except:
-                pass
+                time.sleep(1)
+            except Exception as e:
+                print(f"Aviso: No se pudo eliminar DB: {e}")
 
+        # Carga de documentos
         documents = []
         if os.path.exists(PDF_FOLDER_PATH):
             pdf_files = [f for f in os.listdir(PDF_FOLDER_PATH) if f.lower().endswith(".pdf")]
-            print(f"SISTEMA: Encontrados {len(pdf_files)} archivos PDF.")
+            print(f"SISTEMA: Encontrados {len(pdf_files)} PDFs.")
             
             for filename in pdf_files:
                 try:
@@ -73,25 +80,29 @@ def background_setup():
                     print(f"Error cargando {filename}: {e}")
         
         if not documents:
-            init_error = "No se encontraron PDFs en la carpeta 'Archivos PDF'."
+            init_error = "No hay PDFs en 'Archivos PDF'."
             print(f"SISTEMA: {init_error}")
             return
 
+        # Fragmentación
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks = text_splitter.split_documents(documents)
 
-        print(f"SISTEMA: Creando base vectorial con {len(chunks)} fragmentos...")
+        print(f"SISTEMA: Indexando {len(chunks)} fragmentos...")
+        
+        # Base vectorial
         vector_db = Chroma.from_documents(
             documents=chunks,
             embedding=embeddings_model,
             persist_directory=PERSIST_DIRECTORY
         )
 
+        # Configuración LLM
         llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
 
-        template = """Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela y un experto en diseño instruccional para pacientes. Tu propósito es guiar a los educadores en diabetes sobre la mejor manera de lograr que los pacientes adquieran conocimiento y autoeficacia en el manejo de su condición. 
-
-        Utiliza el siguiente contexto para responder de forma pedagógica. Si la respuesta no está en el contexto, indícalo claramente.
+        # Prompt Académico UCV
+        template = """Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela (UCV).
+        Responde de forma pedagógica y profesional.
         
         Contexto: {context}
         Pregunta: {question}
@@ -100,17 +111,19 @@ def background_setup():
         
         prompt = PromptTemplate(template=template, input_variables=["context", "question"])
 
-        document_chain = create_stuff_documents_chain(llm, prompt)
-        retrieval_chain = create_retrieval_chain(
-            retriever=vector_db.as_retriever(),
-            combine_docs_chain=document_chain
+        # Cadena RAG
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=vector_db.as_retriever(search_kwargs={"k": 5}),
+            chain_type_kwargs={"prompt": prompt}
         )
         
-        print("SISTEMA: ¡Asistente RAG listo!")
+        print("SISTEMA: IA lista.")
 
     except Exception as e:
         init_error = str(e)
-        print(f"ERROR EN RAG: {e}")
+        print(f"ERROR: {e}")
         traceback.print_exc()
     finally:
         is_initializing = False
@@ -124,34 +137,31 @@ def home():
         
     return jsonify({
         "status": "online", 
-        "rag_ready": retrieval_chain is not None,
+        "rag_ready": qa_chain is not None,
         "is_initializing": is_initializing,
         "error": init_error
     })
 
 @app.route('/ask', methods=['POST'])
 def ask():
-    global retrieval_chain, thread_started
-    
+    global qa_chain, thread_started
     if not thread_started:
         thread_started = True
         threading.Thread(target=background_setup, daemon=True).start()
 
-    if retrieval_chain is None:
+    if qa_chain is None:
         if is_initializing:
-            return jsonify({"response": "El asistente se está iniciando. Por favor, espera unos segundos e intenta de nuevo."}), 503
-        if init_error:
-            return jsonify({"response": f"Error de configuración: {init_error}"}), 500
-        return jsonify({"response": "El motor RAG no está listo."}), 503
+            return jsonify({"response": "Analizando manuales. Espera un momento..."}), 503
+        return jsonify({"response": f"Error: {init_error}"}), 500
 
     data = request.get_json()
     user_question = data.get('question')
 
     try:
-        response = retrieval_chain.invoke({"input": user_question})
-        return jsonify({"response": response["answer"]})
+        result = qa_chain.invoke({"query": user_question})
+        return jsonify({"response": result["result"]})
     except Exception as e:
-        return jsonify({"response": f"Error al procesar la consulta: {str(e)}"}), 500
+        return jsonify({"response": f"Error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
