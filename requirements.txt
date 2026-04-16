@@ -3,7 +3,7 @@ flask-cors==5.0.0
 gunicorn==25.0.2
 langchain==0.1.20
 langchain-core==0.1.52
-langchain-text-splitters==1.1.1
+
 langchain-google-genai==1.0.1
 google-generativeai==0.4.1
 chromadb==0.5.5
