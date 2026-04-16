@@ -12,6 +12,8 @@ import threading
 import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from langchain_community.document_loaders import PyPDFLoader
+import gc
 
 app = Flask(__name__)
 CORS(app)
@@ -43,10 +45,8 @@ def background_setup():
         PDF_FOLDER_PATH = os.path.join(BASE_DIR, "Archivos PDF")
         PERSIST_DIRECTORY = os.path.join(BASE_DIR, "chroma_db_diabetes")
 
-        # ✅ DIAGNÓSTICO: Ver qué ve el sistema
         print(f"SISTEMA: Directorio base: {BASE_DIR}")
         print(f"SISTEMA: Ruta de PDFs: {PDF_FOLDER_PATH}")
-        print(f"SISTEMA: ¿Existe la carpeta?: {os.path.exists(PDF_FOLDER_PATH)}")
 
         if not os.path.exists(PDF_FOLDER_PATH):
             init_error = "Carpeta 'Archivos PDF' no encontrada en el servidor."
@@ -54,7 +54,7 @@ def background_setup():
             return
 
         pdf_files = [f for f in os.listdir(PDF_FOLDER_PATH) if f.lower().endswith(".pdf")]
-        print(f"SISTEMA: Archivos PDF detectados: {pdf_files}")
+        print(f"SISTEMA: Encontrados {len(pdf_files)} archivos PDF.")
 
         if not pdf_files:
             init_error = "No hay archivos PDF en la carpeta 'Archivos PDF'."
@@ -62,42 +62,44 @@ def background_setup():
             return
 
         embeddings_model = GoogleGenerativeAIEmbeddings(
-            model="text-embedding-004",  # ✅ Formato correcto
+            model="text-embedding-004",
             google_api_key=API_KEY
         )
 
-        # Limpiar base vectorial anterior
         if os.path.exists(PERSIST_DIRECTORY):
             shutil.rmtree(PERSIST_DIRECTORY)
 
-        # Cargar documentos
         documents = []
         for filename in pdf_files:
             try:
                 loader = PyPDFLoader(os.path.join(PDF_FOLDER_PATH, filename))
-                documents.extend(loader.load())
-                print(f"SISTEMA: Cargado: {filename}")
+                docs = loader.load()
+                if docs:
+                    documents.extend(docs)
+                    print(f"  - Cargado: {filename} ({len(docs)} páginas)")
+                else:
+                    print(f"  - Advertencia: {filename} no contiene texto extraíble")
             except Exception as e:
-                print(f"Error cargando {filename}: {e}")
+                print(f"  - Error cargando {filename}: {e}")
 
         if not documents:
             init_error = "No se pudo extraer texto de los PDFs."
             print(f"SISTEMA: {init_error}")
             return
 
-        # Dividir y crear base vectorial
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks = text_splitter.split_documents(documents)
-        print(f"SISTEMA: Creando base vectorial con {len(chunks)} fragmentos...")
+        del documents
+        gc.collect()
 
+        print(f"SISTEMA: Creando base vectorial con {len(chunks)} fragmentos...")
         vector_db = Chroma.from_documents(
             documents=chunks,
             embedding=embeddings_model,
             persist_directory=PERSIST_DIRECTORY
         )
 
-        # Configurar LLM y cadena
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)  # ✅ Modelo real y gratuito
+        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
 
         template = """Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela y un experto en diseño instruccional para pacientes. Tu propósito es guiar a los educadores en diabetes sobre la mejor manera de lograr que los pacientes adquieran conocimiento y autoeficacia en el manejo de su condición. 
 
@@ -164,4 +166,4 @@ def ask():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)  # ✅ Correcto para Render
+    app.run(host='0.0.0.0', port=port)
