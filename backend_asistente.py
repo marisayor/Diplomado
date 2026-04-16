@@ -1,4 +1,24 @@
-import google.generativeai as genai
+
+# --- Al inicio de background_setup() ---
+import os
+
+# Obtener la ruta absoluta del directorio del script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PDF_FOLDER_PATH = os.path.join(SCRIPT_DIR, "Archivos PDF")
+PERSIST_DIRECTORY = os.path.join(SCRIPT_DIR, "chroma_db_diabetes")
+
+print(f"SISTEMA: Directorio del script: {SCRIPT_DIR}")
+print(f"SISTEMA: Ruta de PDFs: {PDF_FOLDER_PATH}")
+print(f"SISTEMA: ¿Existe la carpeta?: {os.path.exists(PDF_FOLDER_PATH)}")
+
+if os.path.exists(PDF_FOLDER_PATH):
+    pdf_files = [f for f in os.listdir(PDF_FOLDER_PATH) if f.lower().endswith(".pdf")]
+    print(f"SISTEMA: Archivos PDF encontrados: {pdf_files}")
+else:
+    print("SISTEMA: ¡LA CARPETA 'Archivos PDF' NO EXISTE EN ESTA RUTA!")
+    init_error = "Carpeta 'Archivos PDF' no encontrada en el servidor."
+    return
+# --- resto del código igual ---import google.generativeai as genai
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Chroma
