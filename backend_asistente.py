@@ -108,7 +108,7 @@ print(f"SISTEMA: ¿Existe la carpeta?: {os.path.exists(PDF_FOLDER_PATH)}")
             persist_directory=PERSIST_DIRECTORY
         )
 
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2)
+        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
 
         template = """Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela y un experto en diseño instruccional para pacientes. Tu propósito es guiar a los educadores en diabetes sobre la mejor manera de lograr que los pacientes adquieran conocimiento y autoeficacia en el manejo de su condición. 
 
