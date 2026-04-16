@@ -62,9 +62,15 @@ def background_setup():
             return
 
         embeddings_model = GoogleGenerativeAIEmbeddings(
-            model="text-embedding-003",
-            google_api_key=API_KEY
-        )
+    model="models/text-embedding-004",  # ✅ Con "models/" (como en 2025)
+    google_api_key=API_KEY
+)
+
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash",  # ✅ Correcto
+    temperature=0.2,
+    google_api_key=API_KEY
+)
 
         if os.path.exists(PERSIST_DIRECTORY):
             shutil.rmtree(PERSIST_DIRECTORY)
