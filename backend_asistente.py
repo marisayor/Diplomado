@@ -10,6 +10,8 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 from langchain_community.vectorstores import Chroma
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
+from dotenv import load_dotenv
+load_dotenv()
 import google.generativeai as genai
 
 # --- Configuración de Flask ---
