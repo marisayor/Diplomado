@@ -40,7 +40,7 @@ def background_setup():
         genai.configure(api_key=API_KEY)
         os.environ["GOOGLE_API_KEY"] = API_KEY
 
-        # ✅ RUTA ABSOLUTA CORRECTA PARA RENDER
+        # Ruta absoluta para Render/Netlify
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         PDF_FOLDER_PATH = os.path.join(BASE_DIR, "Archivos PDF")
         PERSIST_DIRECTORY = os.path.join(BASE_DIR, "chroma_db_diabetes")
@@ -61,16 +61,11 @@ def background_setup():
             print(f"SISTEMA: {init_error}")
             return
 
+        # ✅ Modelo correcto para LangChain 0.1.x
         embeddings_model = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-004",  # ✅ Con "models/" (como en 2025)
-    google_api_key=API_KEY
-)
-
-llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",  # ✅ Correcto
-    temperature=0.2,
-    google_api_key=API_KEY
-)
+            model="models/text-embedding-004",  # Con "models/" (requerido en 0.1.x)
+            google_api_key=API_KEY
+        )
 
         if os.path.exists(PERSIST_DIRECTORY):
             shutil.rmtree(PERSIST_DIRECTORY)
