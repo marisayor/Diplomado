@@ -62,7 +62,7 @@ def background_setup():
             return
 
         embeddings_model = GoogleGenerativeAIEmbeddings(
-            model="text-embedding-004",
+            model="text-embedding-003",
             google_api_key=API_KEY
         )
 
