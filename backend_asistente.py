@@ -1,172 +1,183 @@
-import os
-import gc
-import shutil
-import traceback
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from langchain_community.document_loaders import PyPDFLoader
+import google.generativeai as genai
+# Importaciones corregidas para versiones modernas
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Chroma
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from dotenv import load_dotenv
-load_dotenv()
-import google.generativeai as genai
+import os
+from langchain_community.document_loaders import PyPDFLoader
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import shutil
+import traceback
+import threading
+import time
+import gc
 
 # --- Configuración de Flask ---
 app = Flask(__name__)
 CORS(app)
 
-# --- 1. Configuración de la API de Google Gemini ---
+# --- Configuración de API ---
 API_KEY = os.getenv("GOOGLE_API_KEY")
-if not API_KEY:
-    print("ERROR: La variable de entorno GOOGLE_API_KEY no está configurada.")
 
-genai.configure(api_key=API_KEY)
-os.environ["GOOGLE_API_KEY"] = API_KEY
-
-# --- 2. Rutas robustas (funcionan en Render y Netlify) ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PDF_FOLDER_PATH = os.path.join(BASE_DIR, "Archivos PDF")
-PERSIST_DIRECTORY = os.path.join(BASE_DIR, "chroma_db_diabetes")
-
-# --- 3. Inicialización de componentes ---
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-embeddings_model = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-004",  # ✅ Como en 2025
-    google_api_key=API_KEY
-)
-vector_db = None
+# Variables de estado global
 qa_chain = None
+is_initializing = False
+init_error = None
+thread_started = False
 
-# --- 4. Carga o creación de la base vectorial ---
-def initialize_vector_db():
-    global vector_db, qa_chain
-    db_needs_recreation = False
+def background_setup():
+    """
+    Carga los documentos y configura la IA en un hilo separado
+    para que el servidor Flask pueda responder 'Live' de inmediato.
+    """
+    global qa_chain, is_initializing, init_error
+    
+    # Pausa de seguridad inicial
+    time.sleep(5)
+    
+    print("SISTEMA: Iniciando procesamiento de documentos en segundo plano...")
+    is_initializing = True
+    init_error = None
+    
+    try:
+        if not API_KEY:
+            init_error = "GOOGLE_API_KEY no configurada en el entorno."
+            print(f"ERROR: {init_error}")
+            return
 
-    # Intentar cargar base existente
-    if os.path.exists(PERSIST_DIRECTORY):
-        try:
-            print(f"Intentando cargar base vectorial desde '{PERSIST_DIRECTORY}'...")
-            vector_db = Chroma(persist_directory=PERSIST_DIRECTORY, embedding_function=embeddings_model)
-            if not vector_db.get()['ids']:
-                print("Base cargada pero vacía. Se recreará.")
-                db_needs_recreation = True
-                del vector_db
-                vector_db = None
-                gc.collect()
-        except Exception as e:
-            print(f"Error al cargar base persistente: {e}. Se recreará.")
-            db_needs_recreation = True
-            if 'vector_db' in locals():
-                del vector_db
-            vector_db = None
-            gc.collect()
-    else:
-        print(f"Directorio '{PERSIST_DIRECTORY}' no existe. Se creará nueva base.")
-        db_needs_recreation = True
+        genai.configure(api_key=API_KEY)
 
-    # Recrear si es necesario
-    if db_needs_recreation:
+        PDF_FOLDER_PATH = "Archivos PDF"
+        PERSIST_DIRECTORY = "./chroma_db_diabetes"
+
+        # Nombre del modelo de embeddings (sin prefijo models/ para evitar error 400)
+        embeddings_model = GoogleGenerativeAIEmbeddings(
+            model="text-embedding-004", 
+            google_api_key=API_KEY
+        )
+
+        # Limpiar base de datos previa para evitar bloqueos de archivos
         if os.path.exists(PERSIST_DIRECTORY):
+            print("SISTEMA: Limpiando base de datos previa...")
             try:
                 shutil.rmtree(PERSIST_DIRECTORY)
-                print("Base antigua eliminada.")
+                gc.collect()
+                time.sleep(2)
             except Exception as e:
-                print(f"Error al eliminar base antigua: {e}")
-                return
+                print(f"Aviso: No se pudo limpiar la carpeta: {e}")
 
+        # Carga de PDFs
         documents = []
         if os.path.exists(PDF_FOLDER_PATH):
-            print(f"Cargando documentos desde: {PDF_FOLDER_PATH}")
-            for filename in os.listdir(PDF_FOLDER_PATH):
-                if filename.lower().endswith(".pdf"):
-                    file_path = os.path.join(PDF_FOLDER_PATH, filename)
-                    try:
-                        loader = PyPDFLoader(file_path)
-                        docs = loader.load()
-                        if docs:
-                            documents.extend(docs)
-                            print(f"  - Cargado: {filename} ({len(docs)} páginas)")
-                        else:
-                            print(f"  - Advertencia: {filename} no tiene texto extraíble")
-                    except Exception as e:
-                        print(f"  - Error al cargar {filename}: {e}")
-        else:
-            print(f"ADVERTENCIA: Carpeta '{PDF_FOLDER_PATH}' no encontrada.")
-            return
-
+            pdf_files = [f for f in os.listdir(PDF_FOLDER_PATH) if f.lower().endswith(".pdf")]
+            print(f"SISTEMA: Encontrados {len(pdf_files)} archivos.")
+            for filename in pdf_files:
+                try:
+                    loader = PyPDFLoader(os.path.join(PDF_FOLDER_PATH, filename))
+                    documents.extend(loader.load())
+                    print(f"  - Cargado: {filename}")
+                except Exception as e:
+                    print(f"  - Error cargando {filename}: {e}")
+        
         if not documents:
-            print("ERROR: No se encontraron documentos válidos.")
+            init_error = "No se encontraron documentos válidos en 'Archivos PDF'."
+            print(f"ERROR: {init_error}")
             return
 
+        # Procesamiento de texto con limpieza de memoria
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks = text_splitter.split_documents(documents)
-        print(f"Divididos en {len(chunks)} fragmentos. Creando base vectorial...")
-        try:
-            vector_db = Chroma.from_documents(
-                documents=chunks,
-                embedding=embeddings_model,
-                collection_name="diabetes_diploma_docs",
-                persist_directory=PERSIST_DIRECTORY
-            )
-            print("Base vectorial creada y persistida.")
-        except Exception as e:
-            print(f"ERROR al crear base vectorial: {e}")
-            return
+        del documents
+        gc.collect()
 
-    # --- 5. Configuración del modelo LLM y cadena RAG ---
-    if vector_db:
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2, google_api_key=API_KEY)
-        custom_prompt_template = """
-Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela y un experto en diseño instruccional para pacientes. Tu propósito es guiar a los educadores en diabetes sobre la mejor manera de lograr que los pacientes adquieran conocimiento y autoeficacia en el manejo de su condición.
-
-Utiliza el siguiente contexto para responder de forma pedagógica. Si la respuesta no está en el contexto, indícalo claramente.
-
-Contexto: {context}
-Pregunta: {question}
-
-Respuesta:"""
-        CUSTOM_PROMPT = PromptTemplate(template=custom_prompt_template, input_variables=["context", "question"])
-        qa_chain = RetrievalQA.from_chain_type(
-            llm,
-            chain_type="stuff",
-            retriever=vector_db.as_retriever(),
-            chain_type_kwargs={"prompt": CUSTOM_PROMPT}
+        print(f"SISTEMA: Indexando {len(chunks)} fragmentos...")
+        
+        # Base vectorial
+        vector_db = Chroma.from_documents(
+            documents=chunks,
+            embedding=embeddings_model,
+            persist_directory=PERSIST_DIRECTORY
         )
-        print("Cadena RAG inicializada correctamente.")
-    else:
-        print("ADVERTENCIA: No se pudo inicializar la cadena RAG.")
 
-# --- 6. Endpoints de la API ---
+        # Modelo Gemini 1.5 Flash (más ligero para Render)
+        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
+
+        # Prompt UCV Académico
+        template = """Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela (UCV).
+        Responde basándote en el contexto para educar a otros profesionales de forma pedagógica.
+        
+        Contexto: {context}
+        Pregunta: {question}
+        
+        Respuesta:"""
+        
+        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
+
+        # Cadena RAG
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=vector_db.as_retriever(search_kwargs={"k": 5}),
+            chain_type_kwargs={"prompt": prompt}
+        )
+        
+        print("SISTEMA: ¡IA lista para responder consultas!")
+
+    except Exception as e:
+        init_error = f"Excepción en background_setup: {str(e)}"
+        print(f"ERROR CRÍTICO: {init_error}")
+        traceback.print_exc()
+    finally:
+        is_initializing = False
+
 @app.route('/', methods=['GET'])
 def home():
+    """Ruta raíz para salud del servidor y despertar el hilo"""
+    global thread_started
+    if not thread_started:
+        thread_started = True
+        # Usamos un hilo daemon para que no bloquee el cierre del proceso
+        threading.Thread(target=background_setup, daemon=True).start()
+        
     return jsonify({
-        "status": "online",
-        "rag_ready": qa_chain is not None
+        "status": "online", 
+        "ia_ready": qa_chain is not None,
+        "is_loading": is_initializing,
+        "error": init_error,
+        "info": "Si ia_ready es false y is_loading es false, revisa el campo error."
     })
 
 @app.route('/ask', methods=['POST'])
-def ask_assistant_api():
-    if not qa_chain:
-        return jsonify({"response": "El asistente aún no está listo. Por favor, espera unos segundos."}), 503
+def ask():
+    """Recibe preguntas del frontend"""
+    global qa_chain, thread_started
+    
+    # Asegurar que el hilo se inicie si la primera petición es /ask
+    if not thread_started:
+        thread_started = True
+        threading.Thread(target=background_setup, daemon=True).start()
 
-    data = request.get_json()
-    user_question = data.get('question')
-    if not user_question:
-        return jsonify({"response": "Por favor, proporcione una pregunta."}), 400
+    if qa_chain is None:
+        if is_initializing:
+            return jsonify({"response": "Estoy analizando los manuales. Por favor, espera 60 segundos y reintenta."}), 503
+        return jsonify({"response": f"El motor de IA falló al iniciar: {init_error}"}), 500
 
     try:
-        answer = qa_chain.run(user_question)
-        return jsonify({"response": answer})
+        data = request.get_json()
+        question = data.get('question')
+        if not question:
+            return jsonify({"response": "Pregunta vacía."}), 400
+            
+        result = qa_chain.invoke({"query": question})
+        return jsonify({"response": result["result"]})
     except Exception as e:
-        print(f"ERROR al procesar pregunta: {e}")
-        traceback.print_exc()
+        print(f"Error en /ask: {e}")
         return jsonify({"response": f"Error interno: {str(e)}"}), 500
 
-# --- 7. Inicialización y ejecución ---
 if __name__ == '__main__':
-    print("Iniciando servidor Flask...")
-    initialize_vector_db()  # Inicializa la base al arrancar
+    # Render asigna el puerto mediante la variable de entorno PORT
     port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port)
