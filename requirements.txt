@@ -3,6 +3,7 @@ flask-cors
 gunicorn
 langchain
 langchain-community
+langchain-core
 langchain-google-genai
 langchain-text-splitters
 pypdf
