@@ -2,11 +2,11 @@ flask
 flask-cors
 gunicorn
 langchain>=0.1.0
-langchain-community
-langchain-core
+langchain-community>=0.0.10
+langchain-core>=0.1.0
 langchain-google-genai
 langchain-text-splitters
 pypdf
 chromadb
-google-genai
+google-generativeai
 pydantic
