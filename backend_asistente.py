@@ -7,9 +7,7 @@ import traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# IMPORTANTE: El orden de estas importaciones puede afectar el registro de módulos
-import langchain_community
-import langchain_core
+# Importaciones ajustadas para LangChain 1.x / Community 0.4.x
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
