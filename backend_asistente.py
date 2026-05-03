@@ -16,6 +16,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
+except ImportError as e:
+    print(f"ERROR DE IMPORTACIÓN: {e}")
 
 # --- Configuración de Flask ---
 app = Flask(__name__)
