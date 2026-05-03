@@ -7,16 +7,13 @@ import traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# Importaciones de LangChain (Estructura modular 2026)
-try:
-    from langchain.chains import RetrievalQA
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-    from langchain_community.vectorstores import Chroma
-    from langchain.prompts import PromptTemplate
-    from langchain_community.document_loaders import PyPDFLoader
-except ImportError as e:
-    print(f"ERROR DE IMPORTACIÓN: {e}")
+# Importaciones directas (sin try/except para forzar la detección de errores)
+from langchain.chains import RetrievalQA
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_community.vectorstores import Chroma
+from langchain.prompts import PromptTemplate
+from langchain_community.document_loaders import PyPDFLoader
 
 # --- Configuración de Flask ---
 app = Flask(__name__)
