@@ -6,20 +6,18 @@ import gc
 import traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-
-# Importaciones ajustadas para LangChain 1.x / Community 0.4.x
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.vectorstores import Chroma
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
+# Importaciones de LangChain
+try:
+    from langchain_community.document_loaders import PyPDFLoader
+    from langchain_community.vectorstores import Chroma
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+    from langchain.chains import RetrievalQA
+    from langchain.prompts import PromptTemplate
 except ImportError as e:
     print(f"ERROR DE IMPORTACIÓN: {e}")
 
-# --- Configuración de Flask ---
 app = Flask(__name__)
-# CORS configurado para evitar errores de seguridad en el navegador
 CORS(app)
 
 # --- Configuración de API ---
