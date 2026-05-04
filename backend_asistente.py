@@ -20,10 +20,7 @@ except ImportError as e:
 # --- Configuración de Flask ---
 app = Flask(__name__)
 # CORS configurado para evitar errores de seguridad en el navegador
-CORS(app, resources={r"/*": {"origins": "*",
-                              "methods": ["GET", "POST", "OPTIONS"],
-    "allow_headers": ["Content-Type", "Authorization"]
-                            }})
+CORS(app)
 
 # --- Configuración de API ---
 API_KEY = os.getenv("GOOGLE_API_KEY")
