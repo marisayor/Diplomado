@@ -96,7 +96,7 @@ def background_setup():
         llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
 
         # Prompt académico personalizado para la UCV
-        template = """ Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela (UCV).
+        custom_prompt_template = """ Eres un profesor del diplomado de educación terapéutica en diabetes de la Universidad Central de Venezuela (UCV).
         Responde basándote en el contexto para educar a otros profesionales de forma pedagógica.
         
         Contexto: {context}
@@ -104,14 +104,14 @@ def background_setup():
         
         Respuesta:"""
         
-        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
+        prompt = PromptTemplate(template=custom_prompt_template, input_variables=["context", "question"])
 
         # Construcción de la cadena RAG
         qa_chain = RetrievalQA.from_chain_type(
             llm=llm,
             chain_type="stuff",
             retriever=vector_db.as_retriever(search_kwargs={"k": 5}),
-            chain_type_kwargs={"prompt": prompt}
+            chain_type_kwargs={"prompt": PROMPT}
         )
         
         print("SISTEMA: ¡IA lista para recibir consultas!")
